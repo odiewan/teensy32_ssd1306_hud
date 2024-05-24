@@ -17,7 +17,11 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 #define LOGO_HEIGHT     16
 #define LOGO_WIDTH      16
 #define LOGO_X_MIN      -8
-#define LOGO_X_MAX      104
+#define LOGO_X_MAX      120
+
+#define DIR_DOWN        -1
+#define DIR_NONE        0
+#define DIR_UP          1
 
 
 #define SER_WAIT_TICKS  10
@@ -122,12 +126,6 @@ void ledToggle() {
   bit = !bit;
   digitalWrite(LED_BUILTIN, bit);
 }
-
-// //=================================================================================================
-// void spln(String nMsg) {
-//     const String _str = nMsg;
-//     Serial.println(F(_str));
-// }
 
 //=================================================================================================
 void setup() {
@@ -236,13 +234,11 @@ void renderOledE_compass() {
   if (x > LOGO_X_MAX) {
     x = LOGO_X_MAX;
     dir = -1;
-    // x = rLim;
   }
 
   if(x < LOGO_X_MIN) {
     x = LOGO_X_MIN;
     dir = 1;
-    // x = lLim;
   }
 
 
