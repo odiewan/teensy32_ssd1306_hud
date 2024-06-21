@@ -204,12 +204,12 @@ void taskSerOut() {
 //-----------------------------------------------------------------------------
 void taskHandleSerIn() {
   if (recvWithEndMarker() > "") {
-    if (inStr == "on") {
+    if (inStr == "non") {
       nxplEn = true;
       serPrntNL("on: neopixel ring on");
     }
 
-    else if (inStr == "off") {
+    else if (inStr == "noff") {
       nxplEn = false;
       serPrntNL("off: neopixel ring off");
     }
@@ -337,7 +337,7 @@ void taskNpxl() {
     case 1:
       serPrntNL("idx: 1");
       npxlIdx00 = idx;
-      npxlIdx01 = 1;
+      npxlIdx01 = 0;
       npxlIdx02 = 15;
       break;
   }
