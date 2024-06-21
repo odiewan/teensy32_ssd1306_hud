@@ -3,8 +3,10 @@
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
-#include <Stepper.h>
 #include <led_pulse_train.h>
+#include <Adafruit_NeoPixel.h>
+#include <gfx_bitmaps.h>
+#include <serialPrint.h>
 
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
@@ -15,6 +17,8 @@
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 #define NUMFLAKES       10 // Number of snowflakes in the animation example
+#define NPXL_PIN        2
+#define NPXL_CNT        16
 
 #define LOGO_HEIGHT     16
 #define LOGO_WIDTH      16
@@ -32,202 +36,40 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 #define SER_WAIT_TICKS  10
 #define COMPASS_Y       0
 
-#define STEPS 100
-
 #define SETUP_DELAY     1000
+#define NUM_BYTES       32
 
 
-static const unsigned char PROGMEM logo_bmp[] = {
-  0b00000011, 0b11000000,
-  0b00000110, 0b01100000,
-  0b00001100, 0b00110000,
-  0b00011000, 0b00011000,
-
-  0b00110000, 0b00001100,
-  0b01100000, 0b00000110,
-  0b11000000, 0b00000011,
-  0b11000000, 0b00000011,
-
-  0b11111111, 0b11111111,
-  0b11111111, 0b11111111,
-  0b11000000, 0b00000011,
-  0b11000000, 0b00000011,
-
-  0b11000000, 0b00000011,
-  0b11000000, 0b00000011,
-  0b11000000, 0b00000011,
-  0b11000000, 0b00000011,
-  };
-
-static const unsigned char PROGMEM bmp00[] = {
-  0b00000001, 0b10000000,
-  0b00000011, 0b11000000,
-  0b00000111, 0b11100000,
-  0b00001111, 0b11110000,
-
-  0b00011111, 0b11111000,
-  0b00111111, 0b11111100,
-  0b01111111, 0b11111110,
-  0b11111111, 0b11111111,
-
-  0b00000111, 0b11100000,
-  0b00000111, 0b11100000,
-  0b00000111, 0b11100000,
-  0b00000111, 0b11100000,
-
-  0b00000111, 0b11100000,
-  0b00000111, 0b11100000,
-  0b00000111, 0b11100000,
-  0b00000111, 0b11100000,
-  };
-
-static const unsigned char PROGMEM bmp0l[] = {
-  0b10000000, 0b00000000,
-  0b11100000, 0b00000000,
-  0b11111000, 0b00000000,
-  0b11111110, 0b00000000,
-
-  0b11111111, 0b10000000,
-  0b11111111, 0b11000000,
-  0b11111111, 0b11111100,
-  0b11111111, 0b11111111,
-
-  0b00000111, 0b11100000,
-  0b00000111, 0b11100000,
-  0b00000111, 0b11100000,
-  0b00000111, 0b11100000,
-
-  0b00000111, 0b11100000,
-  0b00000111, 0b11100000,
-  0b00000111, 0b11100000,
-  0b00000111, 0b11100000,
-  };
-
-static const unsigned char PROGMEM bmp02[] = {
-  0b00000000, 0b10000001,
-  0b00000000, 0b10000111,
-  0b00000000, 0b00011111,
-  0b00000000, 0b01111111,
-
-  0b00000001, 0b11111111,
-  0b00000111, 0b11111111,
-  0b00011111, 0b11111111,
-  0b01111111, 0b11111111,
-
-  0b00000111, 0b11100000,
-  0b00000111, 0b11100000,
-  0b00000111, 0b11100000,
-  0b00000111, 0b11100000,
-
-  0b00000111, 0b11100000,
-  0b00000111, 0b11100000,
-  0b00000111, 0b11100000,
-  0b00000111, 0b11100000,
-  };
-
-static const unsigned char PROGMEM bmp03[] = {
-    0b00000001, 0b10000000,
-    0b00000001, 0b10000000,
-    0b00000011, 0b11000000,
-    0b00000011, 0b11000000,
-
-    0b00000011, 0b11000000,
-    0b00000111, 0b11100000,
-    0b00011111, 0b11111000,
-    0b11111111, 0b11111111,
-
-    0b11111111, 0b11111111,
-    0b00011111, 0b11111000,
-    0b00000111, 0b11100000,
-    0b00000011, 0b11000000,
-
-    0b00000011, 0b11000000,
-    0b00000011, 0b11000000,
-    0b00000001, 0b10000000,
-    0b00000001, 0b10000000
-  };
-
-static const unsigned char PROGMEM diamond[] =
-  {
-
-    0b00000001, 0b10000000,
-    0b00000011, 0b11000000,
-    0b00000111, 0b11100000,
-    0b00001111, 0b11110000,
-
-    0b00011111, 0b11111000,
-    0b00111111, 0b11111100,
-    0b01111111, 0b11111110,
-    0b11111111, 0b11111111,
-
-    0b11111111, 0b11111111,
-    0b01111111, 0b11111110,
-    0b00111111, 0b11111100,
-    0b00011111, 0b11111000,
-
-    0b00001111, 0b11110000,
-    0b00000111, 0b11100000,
-    0b00000011, 0b11000000,
-    0b00000001, 0b10000000
-
-  };
-
-static const unsigned char PROGMEM cross[] = {
-
-    0b00000000, 0b00000001, 0b10000000, 0b00000000,
-    0b00000000, 0b00000001, 0b10000000, 0b00000000,
-    0b00000000, 0b00000001, 0b10000000, 0b00000000,
-    0b00000000, 0b00000001, 0b10000000, 0b00000000,
-
-    0b00000000, 0b00000001, 0b10000000, 0b00000000,
-    0b00000000, 0b00000001, 0b10000000, 0b00000000,
-    0b00000000, 0b00000001, 0b10000000, 0b00000000,
-    0b00000000, 0b00000001, 0b10000000, 0b00000000,
-
-    0b00000000, 0b00000001, 0b10000000, 0b00000000,
-    0b00000000, 0b00000000, 0b10000000, 0b00000000,
-    0b00000000, 0b00000000, 0b10000000, 0b00000000,
-    0b00000000, 0b00000000, 0b10000000, 0b00000000,
-
-    0b00000000, 0b00000001, 0b10000000, 0b00000000,
-    0b00000000, 0b00000001, 0b10000000, 0b00000000,
-    0b00000000, 0b00000001, 0b10000000, 0b00000000,
-    0b11111111, 0b11111111, 0b11111111, 0b11111111,
-
-    0b11111111, 0b11111111, 0b11111111, 0b11111111,
-    0b00000000, 0b00000000, 0b10000000, 0b00000000,
-    0b00000000, 0b00000000, 0b10000000, 0b00000000,
-    0b00000000, 0b00000000, 0b10000000, 0b00000000,
-
-    0b00000000, 0b00000001, 0b10000000, 0b00000000,
-    0b00000000, 0b00000001, 0b10000000, 0b00000000,
-    0b00000000, 0b00000001, 0b10000000, 0b00000000,
-    0b00000000, 0b00000001, 0b10000000, 0b00000000,
-
-    0b00000000, 0b00000000, 0b10000000, 0b00000000,
-    0b00000000, 0b00000000, 0b10000000, 0b00000000,
-    0b00000000, 0b00000000, 0b10000000, 0b00000000,
-    0b00000000, 0b00000000, 0b10000000, 0b00000000,
-
-    0b00000000, 0b00000001, 0b10000000, 0b00000000,
-    0b00000000, 0b00000001, 0b10000000, 0b00000000,
-    0b00000000, 0b00000001, 0b10000000, 0b00000000,
-    0b00000000, 0b00000001, 0b10000000, 0b00000000,
+#define NXP_ROT_DIR_STOP        0
+#define NXP_ROT_DIR_CCW         1
+#define NXP_ROT_DIR_CW          2
 
 
 
-  };
-
+char inByteBuffer[NUM_BYTES] = {};
 
 int x;
 int dir;
+uint16_t idx = 0;
+uint16_t npxlIdx00 = 0;
+uint16_t npxlIdx01 = 0;
+uint16_t npxlIdx02 = 0;
+uint8_t npxl_rotation_dir = true;
+
 int def_count = 0;
 int dir_up_count = 0;
 int dir_dn_count = 0;
 int azim = 0;
+uint8_t _r = 0;
+uint8_t b = 0;
+uint8_t g = 0;
+String inStr = "";
+
 int64_t iCount = 0;
 
-// Stepper stpr(STEPS, 8, 9, 10, 11);
+Adafruit_NeoPixel strip(NPXL_CNT, NPXL_PIN, NEO_GRB + NEO_KHZ800);
+bool nxplEn = true;
+
 
 //=================================================================================================
 void ledToggle() {
@@ -241,10 +83,48 @@ int azim_to_x() {
   return map(azim, 0, 359, LOGO_X_MIN, LOGO_X_MAX);
 }
 
+//-----------------------------------------------------------------------------
+String recvWithEndMarker() {
+  static int bCnt = 0;
+  char endMarker = '\n';
+  char rc;
+
+  while (Serial.available() > 0) {
+    rc = Serial.read();
+    if (bCnt < NUM_BYTES - 1) {
+      if (rc != endMarker) {
+        inByteBuffer[bCnt] = rc;
+        }
+      bCnt++;
+      }
+    else
+      serPrntNL("buffer overflow");
+    }
+
+  if (bCnt > 0) {
+    serPrntVNL("Rx'ed ", bCnt, " bytes");
+    inByteBuffer[bCnt] = '\0';
+    inStr = inByteBuffer;
+    }
+  else
+    inStr = "";
+
+  bCnt = 0;
+
+  return inStr;
+  }
+
 //=================================================================================================
 void setup() {
   int ser_wait_cnt = 0;
   pinMode(LED_BUILTIN, OUTPUT);
+
+  strip.begin();
+  // strip.clear();
+  strip.setPixelColor(0, 31, 0, 0);
+  strip.setPixelColor(8, 0, 31, 0);
+  // strip.setPixelColor(15, 0, 0, 31);
+  strip.show();
 
   Serial.begin(9600);
 
@@ -274,40 +154,11 @@ void setup() {
   display.display();
   delay(SETUP_DELAY);
 
-  // ledPulseTrain(2);
-  // Serial.println(F("render bmp0l"));
-  // display.clearDisplay();
-  // display.drawBitmap(64, 16, bmp0l, LOGO_WIDTH, LOGO_HEIGHT, SSD1306_WHITE);
-  // display.display();
-  // delay(SETUP_DELAY);
-
-  // ledPulseTrain(3);
-  // Serial.println(F("render bmp02"));
-  // display.clearDisplay();
-  // display.drawBitmap(64, 16, bmp02, LOGO_WIDTH, LOGO_HEIGHT, SSD1306_WHITE);
-  // display.display();
-  // delay(SETUP_DELAY);
-
-  // ledPulseTrain(4);
-  // Serial.println(F("render bmp03"));
-  // display.clearDisplay();
-  // display.drawBitmap(64, 16, bmp03, LOGO_WIDTH, LOGO_HEIGHT, SSD1306_WHITE);
-  // display.display();
-  // delay(SETUP_DELAY);
-
-  // ledPulseTrain(5);
-  // Serial.println(F("render cross"));
-  // display.clearDisplay();
-  // display.drawBitmap(64, 16, cross, LOGO_WIDTH * 2, LOGO_HEIGHT * 2, SSD1306_WHITE);
-  // display.display();
-  // delay(SETUP_DELAY);
 
   ledPulseTrain(5);
   display.clearDisplay();
   display.display();
   delay(SETUP_DELAY);
-
-  // stpr.setSpeed(70);
 
   }
 
@@ -317,14 +168,31 @@ void taskSerOut() {
   if (iCount % 100) {
     _tmpStr = "--iC:";
     _tmpStr += iCount;
-    _tmpStr += " azim:";
-    _tmpStr += azim;
-    _tmpStr += " x:";
-    _tmpStr += x;
+    // _tmpStr += " azim:";
+    // _tmpStr += azim;
+    // _tmpStr += " x:";
+    // _tmpStr += x;
+
+    _tmpStr += " idx:";
+    _tmpStr += idx;
+
+    _tmpStr += " npxlIdx00:";
+    _tmpStr += npxlIdx00;
+    _tmpStr += " npxlIdx01:";
+    _tmpStr += npxlIdx01;
+    _tmpStr += " npxlIdx02:";
+    _tmpStr += npxlIdx02;
+
+    _tmpStr += " _r:";
+    _tmpStr += _r;
+    _tmpStr += " b:";
+    _tmpStr += b;
+    _tmpStr += " g:";
+    _tmpStr += g;
     _tmpStr += " d:";
-    _tmpStr += dir;
-    _tmpStr += " def_count:";
-    _tmpStr += def_count;
+    // _tmpStr += dir;
+    // _tmpStr += " def_count:";
+    // _tmpStr += def_count;
     // _tmpStr += " dir_dn_count:";
     // _tmpStr += dir_dn_count;
     // _tmpStr += " dir_up_count:";
@@ -333,6 +201,37 @@ void taskSerOut() {
     }
   }
 
+//-----------------------------------------------------------------------------
+void taskHandleSerIn() {
+  if (recvWithEndMarker() > "") {
+    if (inStr == "on") {
+      nxplEn = true;
+      serPrntNL("on: neopixel ring on");
+    }
+
+    else if (inStr == "off") {
+      nxplEn = false;
+      serPrntNL("off: neopixel ring off");
+    }
+
+    else if (inStr == "n+") {
+      npxl_rotation_dir = 2;
+      serPrntNL("n-: neopixel rotation CCW");
+    }
+    else if (inStr == "n-") {
+      npxl_rotation_dir = 1;
+      serPrntNL("n-: neopixel rotation CCW");
+    }
+
+    else if (inStr == "n0") {
+      npxl_rotation_dir = 0;
+      serPrntNL("n-: neopixel rotation stop");
+
+    }
+
+    inStr = "";
+  }
+}
 
 //=================================================================================================
 void renderOledE_compass() {
@@ -390,15 +289,92 @@ void taskOledOut() {
   }
 
 //=================================================================================================
+void taskNpxl() {
+  // static uint16_t _idx = 0;
+  static bool npxlEnShadow = false;
+  if(_r > 64)
+     _r = 0;
+  else
+    _r++;
+
+
+  if (npxl_rotation_dir == NXP_ROT_DIR_CW){
+    idx++;
+    if (idx >= NPXL_CNT) {
+      idx = 0;
+    }
+  }
+  else if(npxl_rotation_dir == NXP_ROT_DIR_CCW) {
+    idx--;
+    if(idx == 0)
+      idx = NPXL_CNT - 1;
+  }
+
+
+  switch(idx) {
+    default:
+      serPrntNL("idx: default");
+      npxlIdx00 = idx;
+      npxlIdx01 = idx -1;
+      npxlIdx02 = idx -2;
+      break;
+
+    case 65535:
+      serPrntNL("idx: 65535");
+      idx = NPXL_CNT - 1;
+      npxlIdx00 = idx;
+      npxlIdx01 = idx - 2;
+      npxlIdx02 = idx - 3;
+      break;
+
+    case 0:
+      serPrntNL("idx: 0");
+      npxlIdx00 = idx;
+      npxlIdx01 = 15;
+      npxlIdx02 = 14;
+      break;
+
+    case 1:
+      serPrntNL("idx: 1");
+      npxlIdx00 = idx;
+      npxlIdx01 = 1;
+      npxlIdx02 = 15;
+      break;
+  }
+
+  if(nxplEn) {
+    strip.clear();
+    strip.setPixelColor(npxlIdx00, 8, g, b);
+    strip.setPixelColor(npxlIdx01, 64, g, b);
+    strip.setPixelColor(npxlIdx02, 8, g, b);
+    strip.show();
+    }
+  else if (npxlEnShadow != nxplEn) {
+    strip.clear();
+    strip.show();
+
+  }
+  npxlEnShadow = nxplEn;
+}
+
+
+//=================================================================================================
 void loop() {
 
-  if (iCount == 30) {
+  taskHandleSerIn();
+
+
+  if (iCount == 15) {
     // stpr.step(512);
 
     dir = 1;
   }
 
+  if(iCount % 300 == 0)
+    taskNpxl();
+
   taskOledOut();
+  taskNpxl();
   taskSerOut();
 
   display.display();
