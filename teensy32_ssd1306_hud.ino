@@ -7,6 +7,7 @@
 #include <Adafruit_NeoPixel.h>
 #include <gfx_bitmaps.h>
 #include <serialPrint.h>
+#include <neopixel_effects.h>
 
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
@@ -18,7 +19,7 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 #define NUMFLAKES       10 // Number of snowflakes in the animation example
 #define NPXL_PIN        2
-#define NPXL_CNT        16
+#define NUM_NEOPIXELS        16
 
 #define LOGO_HEIGHT     16
 #define LOGO_WIDTH      16
@@ -44,12 +45,17 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 #define NXP_ROT_DIR_CCW         1
 #define NXP_ROT_DIR_CW          2
 
+#define QUARTER_PI float(PI / 4.0)
+// #define RAD_TO_DEG float(180/PI)
+// #define DEG_TO_RAD float(PI/80)
+
 
 
 char inByteBuffer[NUM_BYTES] = {};
 
 int x;
 int dir;
+int npxlMode = 0;
 uint16_t idx = 0;
 uint16_t npxlIdx00 = 0;
 uint16_t npxlIdx01 = 0;
@@ -60,15 +66,28 @@ int def_count = 0;
 int dir_up_count = 0;
 int dir_dn_count = 0;
 int azim = 0;
-uint8_t _r = 0;
+int rangeR = 127;
+int rangeG = 127;
+int rangeB = 127;
+
+float incR = 2;
+float incG = 4;
+float incB = 8;
+uint8_t r = 0;
 uint8_t b = 0;
 uint8_t g = 0;
+float rRads = 0;
+
 String inStr = "";
 
 int64_t iCount = 0;
 
-Adafruit_NeoPixel strip(NPXL_CNT, NPXL_PIN, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel strip(NUM_NEOPIXELS, NPXL_PIN, NEO_GRB + NEO_KHZ800);
 bool nxplEn = true;
+
+neopixel_color npxR;
+neopixel_color npxG;
+neopixel_color npxB;
 
 
 //=================================================================================================
@@ -123,8 +142,10 @@ void setup() {
   // strip.clear();
   strip.setPixelColor(0, 31, 0, 0);
   strip.setPixelColor(8, 0, 31, 0);
-  // strip.setPixelColor(15, 0, 0, 31);
+  strip.setPixelColor(15, 0, 0, 31);
   strip.show();
+
+  npxR = neopixel_color(1, 127);
 
   Serial.begin(9600);
 
@@ -165,45 +186,156 @@ void setup() {
 //=================================================================================================
 void taskSerOut() {
   String _tmpStr = "";
+  uint8_t tmpInt = 0;
+
+
   if (iCount % 100) {
+
+    tmpInt = (r + g + b)/3;
     _tmpStr = "--iC:";
     _tmpStr += iCount;
     // _tmpStr += " azim:";
     // _tmpStr += azim;
     // _tmpStr += " x:";
     // _tmpStr += x;
+    _tmpStr += " npxlMode:";
+    _tmpStr += npxlMode;
 
-    _tmpStr += " idx:";
-    _tmpStr += idx;
+    _tmpStr += " incR:";
+    _tmpStr += incR;
 
-    _tmpStr += " npxlIdx00:";
-    _tmpStr += npxlIdx00;
-    _tmpStr += " npxlIdx01:";
-    _tmpStr += npxlIdx01;
-    _tmpStr += " npxlIdx02:";
-    _tmpStr += npxlIdx02;
+    // _tmpStr += " rangeR:";
+    // _tmpStr += rangeR;
 
-    _tmpStr += " _r:";
-    _tmpStr += _r;
+    _tmpStr += "  incG:";
+    _tmpStr += incG;
+
+    // _tmpStr += " rangeG:";
+    // _tmpStr += rangeG;
+
+    _tmpStr += " incB:";
+    _tmpStr += incB;
+
+    // _tmpStr += " rangeB:";
+    // _tmpStr += rangeB;
+
+
+    // _tmpStr += " idx:";
+    // _tmpStr += idx;
+
+
+    // _tmpStr += " npxlIdx00:";
+    // _tmpStr += npxlIdx00;
+    // _tmpStr += " npxlIdx01:";
+    // _tmpStr += npxlIdx01;
+    // _tmpStr += " npxlIdx02:";
+    // _tmpStr += npxlIdx02;
+
+
+    _tmpStr += " r:";
+    _tmpStr += r;
     _tmpStr += " b:";
     _tmpStr += b;
     _tmpStr += " g:";
     _tmpStr += g;
-    _tmpStr += " d:";
-    // _tmpStr += dir;
-    // _tmpStr += " def_count:";
-    // _tmpStr += def_count;
-    // _tmpStr += " dir_dn_count:";
-    // _tmpStr += dir_dn_count;
-    // _tmpStr += " dir_up_count:";
-    // _tmpStr += dir_up_count;
+    _tmpStr += " tmpInt:";
+    _tmpStr += tmpInt;
+
     Serial.println(_tmpStr);
     }
   }
 
 //-----------------------------------------------------------------------------
+void paramSetHandler(String nCmd, String nMsg, int& nParam, int nVal, int nUpLim, int nLoLim) {
+  if(inStr == nCmd) {
+    serPrntNL(nCmd + ": " + nMsg);
+    nParam = nVal;
+
+    if (nParam > nUpLim)
+      nParam = nUpLim;
+    else if (nParam < nLoLim)
+      nParam = nLoLim;
+  }
+}
+//-----------------------------------------------------------------------------
+void paramIncHandler(String nCmd, String nMsg, int &nParam, int nInc, int nUpLim, int nLoLim) {
+  if(inStr == nCmd) {
+    serPrntNL(nCmd + ": " + nMsg);
+    nParam += nInc;
+
+    if (nParam > nUpLim)
+      nParam = nUpLim;
+    else if (nParam < nLoLim)
+      nParam = nLoLim;
+  }
+}
+
+//-----------------------------------------------------------------------------
+void paramIncHandler(String nCmd, String nMsg, float& nParam, float nInc, float nUpLim, float nLoLim) {
+  if(inStr == nCmd) {
+    serPrntNL(nCmd + ": " + nMsg);
+    nParam += nInc;
+
+    if (nParam > nUpLim)
+      nParam = nUpLim;
+    else if (nParam < nLoLim)
+      nParam = nLoLim;
+  }
+}
+
+//-----------------------------------------------------------------------------
 void taskHandleSerIn() {
   if (recvWithEndMarker() > "") {
+
+    paramIncHandler("nm+", "next neopixel mode", npxlMode, 1, 5, 0);
+    paramIncHandler("nm-", "next neopixel mode", npxlMode, -1, 5, 0);
+
+    paramIncHandler("rR+", "increase range", rangeR, 1, 255, 0);
+    paramIncHandler("rR-", "decrease range", rangeR, -1, 255, 0);
+    paramIncHandler("rR++", "increase range", rangeR, 5, 255, 0);
+    paramIncHandler("rR--", "decrease range", rangeR, -5, 255, 0);
+
+    paramIncHandler("rG+", "increase range", rangeG, 1, 255, 0);
+    paramIncHandler("rG-", "decrease range", rangeG, -1, 255, 0);
+    paramIncHandler("rG++", "increase range", rangeG, 5, 255, 0);
+    paramIncHandler("rG--", "decrease range", rangeG, -5, 255, 0);
+
+    paramIncHandler("rB+", "increase range", rangeB, 1, 255, 0);
+    paramIncHandler("rB-", "decrease range", rangeB, -1, 255, 0);
+    paramIncHandler("rB++", "increase range", rangeB, 5, 255, 0);
+    paramIncHandler("rB--", "decrease range", rangeB, -5, 255, 0);
+
+    paramIncHandler("ir+", "increase increment", incR, .1, 64, 0);
+    paramIncHandler("ir-", "decrease increment", incR, -.1, 64, 0);
+
+    paramIncHandler("ir++", "increase increment", incR, 1, 64, 0);
+    paramIncHandler("ir--", "decrease increment", incR, -1, 64, 0);
+
+    paramIncHandler("ig+", "increase increment", incG, .1, 64, 0);
+    paramIncHandler("ig-", "decrease increment", incG, -.1, 64, 0);
+
+    paramIncHandler("ig++", "increase increment", incG, 1, 64, 0);
+    paramIncHandler("ig--", "decrease increment", incG, -1, 64, 0);
+
+    paramIncHandler("ib+", "increase increment", incB, .1, 64, 0);
+    paramIncHandler("ib-", "decrease increment", incB, -.1, 64, 0);
+
+    paramIncHandler("ib++", "increase increment", incB, 1, 64, 0);
+    paramIncHandler("ib--", "decrease increment", incB, -1, 64, 0);
+
+
+    paramSetHandler("rrmx", "max range", rangeR, 255, 255, 1);
+    paramSetHandler("rrmd", "mid range", rangeR, 127, 255, 1);
+    paramSetHandler("rrmn", "min range", rangeR, 1, 255, 1);
+
+    paramSetHandler("rgmx", "max range", rangeG, 255, 255, 1);
+    paramSetHandler("rgmd", "mid range", rangeG, 127, 255, 1);
+    paramSetHandler("rgmn", "min range", rangeG, 1, 255, 1);
+
+    paramSetHandler("rbmx", "max range", rangeB, 255, 255, 1);
+    paramSetHandler("rbmd", "mid range", rangeB, 127, 255, 1);
+    paramSetHandler("rbmn", "min range", rangeB, 1, 255, 1);
+
     if (inStr == "non") {
       nxplEn = true;
       serPrntNL("on: neopixel ring on");
@@ -216,7 +348,7 @@ void taskHandleSerIn() {
 
     else if (inStr == "n+") {
       npxl_rotation_dir = 2;
-      serPrntNL("n-: neopixel rotation CCW");
+      serPrntNL("n+: neopixel rotation CCW");
     }
     else if (inStr == "n-") {
       npxl_rotation_dir = 1;
@@ -228,6 +360,15 @@ void taskHandleSerIn() {
       serPrntNL("n-: neopixel rotation stop");
 
     }
+
+    // else if (inStr == "rrmx") {
+    //   serPrntNL("rrmx: max range");
+    //   rangeR = 255;
+    // }
+    // else if (inStr == "rrmn") {
+    //   serPrntNL("rrmn: min range");
+    //   rangeR = 16;
+    // }
 
     inStr = "";
   }
@@ -284,69 +425,53 @@ void renderOledE_compass() {
   }
 
 //=================================================================================================
+int ledSine(float nInc, float nAmp) {
+
+  static int _rDir = 1;
+  static float _ang = 0;
+  float tempAng = 0;
+
+  _ang += nInc;
+
+  if(_rDir != 0){
+    if (_ang <= 0) {
+      _ang = 359;
+    }
+    else if (_ang > 359) {
+      _ang = 0;
+    }
+  }
+
+  tempAng = sin(DEG_TO_RAD * _ang);
+  tempAng++;
+  tempAng/= 2;
+  // serPrntVNL("sin(_ang)", tempAng);
+  tempAng *= nAmp;
+
+  return tempAng;
+}
+
+
+//=================================================================================================
 void taskOledOut() {
   renderOledE_compass();
   }
 
 //=================================================================================================
-void taskNpxl() {
-  // static uint16_t _idx = 0;
+void taskNpxl_red_breath() {
+
   static bool npxlEnShadow = false;
-  if(_r > 64)
-     _r = 0;
-  else
-    _r++;
 
-
-  if (npxl_rotation_dir == NXP_ROT_DIR_CW){
-    idx++;
-    if (idx >= NPXL_CNT) {
-      idx = 0;
-    }
-  }
-  else if(npxl_rotation_dir == NXP_ROT_DIR_CCW) {
-    idx--;
-    if(idx == 0)
-      idx = NPXL_CNT - 1;
-  }
-
-
-  switch(idx) {
-    default:
-      serPrntNL("idx: default");
-      npxlIdx00 = idx;
-      npxlIdx01 = idx -1;
-      npxlIdx02 = idx -2;
-      break;
-
-    case 65535:
-      serPrntNL("idx: 65535");
-      idx = NPXL_CNT - 1;
-      npxlIdx00 = idx;
-      npxlIdx01 = idx - 2;
-      npxlIdx02 = idx - 3;
-      break;
-
-    case 0:
-      serPrntNL("idx: 0");
-      npxlIdx00 = idx;
-      npxlIdx01 = 15;
-      npxlIdx02 = 14;
-      break;
-
-    case 1:
-      serPrntNL("idx: 1");
-      npxlIdx00 = idx;
-      npxlIdx01 = 0;
-      npxlIdx02 = 15;
-      break;
-  }
+  r = npxR.npcLedSine(incR, rangeR);
+  g = npxG.npcLedSine(incG, rangeG);
+  b = npxB.npcLedSine(incB, rangeB);
 
   if(nxplEn) {
     strip.clear();
-    strip.setPixelColor(npxlIdx00, 8, g, b);
-    strip.setPixelColor(npxlIdx01, 64, g, b);
-    strip.setPixelColor(npxlIdx02, 8, g, b);
+    for(int i = 0; i < NUM_NEOPIXELS; i++) {
+      strip.setPixelColor(i, r, b, g);
+
+    }
     strip.show();
     }
   else if (npxlEnShadow != nxplEn) {
@@ -357,30 +482,112 @@ void taskNpxl() {
   npxlEnShadow = nxplEn;
 }
 
+//=================================================================================================
+void taskNpxl_three_red() {
+  static int rDir = 1;
+  static bool npxlEnShadow = false;
+
+  r += rDir;
+
+  switch(rDir) {
+    case -1:
+      if(r == 0) {
+        rDir = 1;
+        r = 1;
+      }
+
+    default:
+    case 0:
+      break;
+
+    case 1:
+      if (r == 127) {
+        rDir = -1;
+        r = 126;
+      }
+      break;
+  }
+
+
+  if (npxl_rotation_dir == NXP_ROT_DIR_CW) {
+    idx++;
+    if (idx >= NUM_NEOPIXELS) {
+      idx = 0;
+      }
+    }
+  else if (npxl_rotation_dir == NXP_ROT_DIR_CCW) {
+    idx--;
+    if (idx == 0)
+      idx = NUM_NEOPIXELS - 1;
+    }
+
+
+  switch (idx) {
+      default:
+        serPrntNL("idx: default");
+        npxlIdx00 = idx;
+        npxlIdx01 = idx - 1;
+        npxlIdx02 = idx - 2;
+        break;
+
+      case 65535:
+        serPrntNL("idx: 65535");
+        idx = NUM_NEOPIXELS - 1;
+        npxlIdx00 = idx;
+        npxlIdx01 = idx - 2;
+        npxlIdx02 = idx - 3;
+        break;
+
+      case 0:
+        serPrntNL("idx: 0");
+        npxlIdx00 = idx;
+        npxlIdx01 = 15;
+        npxlIdx02 = 14;
+        break;
+
+      case 1:
+        serPrntNL("idx: 1");
+        npxlIdx00 = idx;
+        npxlIdx01 = 0;
+        npxlIdx02 = 15;
+        break;
+    }
+
+  if (nxplEn) {
+    strip.clear();
+    strip.setPixelColor(npxlIdx00, 8, g, b);
+    strip.setPixelColor(npxlIdx01, 64, g, b);
+    strip.setPixelColor(npxlIdx02, 8, g, b);
+    strip.show();
+    }
+  else if (npxlEnShadow != nxplEn) {
+    strip.clear();
+    strip.show();
+
+    }
+  npxlEnShadow = nxplEn;
+  }
+
 
 //=================================================================================================
 void loop() {
 
   taskHandleSerIn();
 
-
   if (iCount == 15) {
-    // stpr.step(512);
-
     dir = 1;
   }
 
-  if(iCount % 300 == 0)
-    taskNpxl();
+  if(iCount % 1 == 0)
+    taskNpxl_red_breath();
 
   taskOledOut();
-  taskNpxl();
   taskSerOut();
 
   display.display();
 
   iCount++;
-  delay(100);
+  delay(10);
 
 
   }
