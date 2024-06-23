@@ -41,9 +41,12 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 #define NUM_BYTES       32
 
 
-#define NXP_ROT_DIR_STOP        0
-#define NXP_ROT_DIR_CCW         1
-#define NXP_ROT_DIR_CW          2
+#define NPX_ROT_DIR_STOP        0
+#define NPX_ROT_DIR_CCW         1
+#define NPX_ROT_DIR_CW          2
+
+#define DEF_NPX_INC     1
+#define DEF_NPX_AMP     31
 
 #define QUARTER_PI float(PI / 4.0)
 // #define RAD_TO_DEG float(180/PI)
@@ -66,9 +69,9 @@ int def_count = 0;
 int dir_up_count = 0;
 int dir_dn_count = 0;
 int azim = 0;
-int rangeR = 127;
-int rangeG = 127;
-int rangeB = 127;
+int rangeR = 32;
+int rangeG = 32;
+int rangeB = 32;
 
 float incR = 2;
 float incG = 4;
@@ -118,7 +121,7 @@ String recvWithEndMarker() {
       }
     else
       serPrntNL("buffer overflow");
-    }
+  }
 
   if (bCnt > 0) {
     serPrntVNL("Rx'ed ", bCnt, " bytes");
@@ -140,12 +143,14 @@ void setup() {
 
   strip.begin();
   // strip.clear();
-  strip.setPixelColor(0, 31, 0, 0);
-  strip.setPixelColor(8, 0, 31, 0);
-  strip.setPixelColor(15, 0, 0, 31);
+  strip.setPixelColor(0, DEF_NPX_AMP, 0, 0);
+  strip.setPixelColor(8, 0, DEF_NPX_AMP, 0);
+  strip.setPixelColor(15, 0, 0, DEF_NPX_AMP);
   strip.show();
 
-  npxR = neopixel_color(1, 127);
+  npxR = neopixel_color(1, DEF_NPX_AMP);
+  npxG = neopixel_color(1, DEF_NPX_AMP);
+  npxB = neopixel_color(1, DEF_NPX_AMP);
 
   Serial.begin(9600);
 
@@ -153,7 +158,7 @@ void setup() {
     ser_wait_cnt++;
     ledToggle();
     delay(250);
-    }
+  }
   x = -LOGO_WIDTH / 2;
   Serial.println(F("Serial OK"));
 
@@ -445,7 +450,6 @@ int ledSine(float nInc, float nAmp) {
   tempAng = sin(DEG_TO_RAD * _ang);
   tempAng++;
   tempAng/= 2;
-  // serPrntVNL("sin(_ang)", tempAng);
   tempAng *= nAmp;
 
   return tempAng;
@@ -509,13 +513,13 @@ void taskNpxl_three_red() {
   }
 
 
-  if (npxl_rotation_dir == NXP_ROT_DIR_CW) {
+  if (npxl_rotation_dir == NPX_ROT_DIR_CW) {
     idx++;
     if (idx >= NUM_NEOPIXELS) {
       idx = 0;
       }
     }
-  else if (npxl_rotation_dir == NXP_ROT_DIR_CCW) {
+  else if (npxl_rotation_dir == NPX_ROT_DIR_CCW) {
     idx--;
     if (idx == 0)
       idx = NUM_NEOPIXELS - 1;
