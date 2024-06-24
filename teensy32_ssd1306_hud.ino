@@ -1,6 +1,8 @@
 
 #include <SPI.h>
 #include <Wire.h>
+#include <EEPROM.h>
+#include <stdio.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <led_pulse_train.h>
@@ -8,6 +10,10 @@
 #include <gfx_bitmaps.h>
 #include <serialPrint.h>
 #include <neopixel_effects.h>
+
+#define EEPROM_SIZE     255
+
+
 
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
@@ -46,14 +52,41 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 #define NPX_ROT_DIR_CW          2
 
 #define DEF_NPX_INC     1
-#define DEF_NPX_AMP     31
+#define DEF_NPX_AMP_MIN 0
+#define DEF_NPX_AMP_MAX 31
 
 #define QUARTER_PI float(PI / 4.0)
 // #define RAD_TO_DEG float(180/PI)
 // #define DEG_TO_RAD float(PI/80)
 
 
+enum eeprom_registers {
+  EE_REG_NEOPIXEL_MODE,
+  EE_REG_R_MAX,
+  EE_REG_G_MAX,
+  EE_REG_B_MAX,
+  EE_REG_R_MIN,
+  EE_REG_G_MIN,
+  EE_REG_B_MIN,
+  EE_REG_R_INT,
+  EE_REG_G_INT,
+  EE_REG_B_INT,
+  NUM_EEPROM_REG,
+}
 
+uint8_t eeprom[EEPROM_SIZE] = {
+uint8_t eeprom_live[EEPROM_SIZE] = {
+  0,//---EE_REG_NEOPIXEL_MODE
+  DEF_NPX_AMP_MAX, //---EE_REG_R_MAX
+  DEF_NPX_AMP_MAX, //---EE_REG_G_MAX
+  DEF_NPX_AMP_MAX, //---EE_REG_B_MAX
+  DEF_NPX_AMP_MIN, //---EE_REG_R_MIN
+  DEF_NPX_AMP_MIN, //---EE_REG_G_MIN
+  DEF_NPX_AMP_MIN, //---EE_REG_B_MIN
+  1, //---EE_REG_R_INT
+  2, //---EE_REG_G_INT
+  3, //---EE_REG_B_INT
+};
 char inByteBuffer[NUM_BYTES] = {};
 
 int x;
@@ -137,20 +170,96 @@ String recvWithEndMarker() {
   }
 
 //=================================================================================================
+void readEEPROM() {
+  serPrntNL("readEEPROM()");
+  String tmpStr;
+  int byte_read_cnt = 0;
+  for (int i = 0; i < EEPROM_SIZE; i++) {
+    eeprom[i] = EEPROM.read(i);
+    memcpy(eeprom_live, eeprom, sizeof(eeprom_live));
+    tmpStr = "readEEPROM()[";
+    tmpStr += i;
+    tmpStr += "]:";
+    tmpStr += eeprom[i];
+    byte_read_cnt++;
+    serPrntNL(tmpStr);
+  }
+
+  serPrntNL();
+  tmpStr = "Read ";
+  tmpStr += byte_read_cnt;
+  tmpStr += " of ";
+  tmpStr += EEPROM_SIZE;
+  tmpStr += " bytes from EEPROM";
+  serPrntNL(tmpStr);
+  }
+
+//=================================================================================================
+void writeEEPROM() {
+  serPrntNL("writeEEPROM()");
+  String tmpStr;
+  int byte_write_cnt = 0;
+
+
+  for (int i = 0; i < EEPROM_SIZE; i++) {
+
+    byte_write_cnt += writeEEPROM(uint8_t nIdx);
+    delay(5);
+  }
+
+  if(byte_write_cnt > 0) {
+    EEPROM.commit();
+
+    tmpStr = "Wrote ";
+    tmpStr += byte_write_cnt;
+    tmpStr += " of ";
+    tmpStr += EEPROM_SIZE;
+    tmpStr += " bytes from EEPROM";
+  }
+  else {
+    tmpStr = "No changes to EEPROM";
+  }
+  serPrntNL(tmpStr);
+  }
+
+//=================================================================================================
+int writeEEPROM(uint8_t nIdx) {
+  serPrntNL("writeEEPROM(nIdx)");
+  String tmpStr;
+  int byte_write_cnt = 0;
+  if (eeprom_live[nIdx] != eeprom[nIdx]) {
+    EEPROM.write(nIdx, eeprom[nIdx);
+    tmpStr = "Register changed: writeEEPROM[";
+    tmpStr += nIdx;
+    tmpStr += "]:";
+    tmpStr += eeprom[nIdx];
+    serPrntNL(tmpStr);
+    delay(5);
+    EEPROM.commit();
+    return 1;
+  }
+  else {
+    serPrntNL("No change to register");
+    return 0;
+  }
+}
+
+
+//=================================================================================================
 void setup() {
   int ser_wait_cnt = 0;
   pinMode(LED_BUILTIN, OUTPUT);
 
   strip.begin();
   // strip.clear();
-  strip.setPixelColor(0, DEF_NPX_AMP, 0, 0);
-  strip.setPixelColor(8, 0, DEF_NPX_AMP, 0);
-  strip.setPixelColor(15, 0, 0, DEF_NPX_AMP);
+  strip.setPixelColor(0, eeprom[EE_REG_R_MAX], 0, 0);
+  strip.setPixelColor(8, 0, eeprom[EE_REG_R_MAX], 0);
+  strip.setPixelColor(15, 0, 0, eeprom[EE_REG_R_MAX]);
   strip.show();
 
-  npxR = neopixel_color(1, DEF_NPX_AMP);
-  npxG = neopixel_color(1, DEF_NPX_AMP);
-  npxB = neopixel_color(1, DEF_NPX_AMP);
+  npxR = neopixel_color(eeprom[EE_REG_R_INT], eeprom[EE_REG_R_MAX]);
+  npxG = neopixel_color(eeprom[EE_REG_R_INT], eeprom[EE_REG_G_MAX]);
+  npxB = neopixel_color(eeprom[EE_REG_R_INT], eeprom[EE_REG_B_MAX]);
 
   Serial.begin(9600);
 
@@ -160,21 +269,28 @@ void setup() {
     delay(250);
   }
   x = -LOGO_WIDTH / 2;
-  Serial.println(F("Serial OK"));
+  serPrntNL("Serial OK");
 
-  Serial.println("Starting....");
+  serPrntNL("Starting....");
   if (!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
-    Serial.println(F("SSD1306 allocation failed"));
+    serPrntNL("SSD1306 allocation failed");
     for (;;);
     }
   else
-    Serial.println(F("SSD1306 allocation OK!"));
+    serPrntNL("SSD1306 allocation OK!");
+
+  appendBootLogS("Init EEPROM");
+  EEPROM.begin(512);
+  appendBootLogS("EEPROM started");
+
+  appendBootLogS("Read EEPROM contents");
+  readEEPROM();
 
 
   // Show initial display buffer contents on the screen --
   // the library initializes this with an Adafruit splash screen.
   ledPulseTrain(1);
-  Serial.println(F("render bmp00"));
+  serPrntNL("render bmp00");
   display.clearDisplay();
   display.drawBitmap(64, 16, logo_bmp, LOGO_WIDTH, LOGO_HEIGHT, SSD1306_WHITE);
   display.display();
@@ -246,14 +362,14 @@ void taskSerOut() {
     _tmpStr += " tmpInt:";
     _tmpStr += tmpInt;
 
-    Serial.println(_tmpStr);
+    serPrntNL(_tmpStr);
     }
   }
 
 //-----------------------------------------------------------------------------
-void paramSetHandler(String nCmd, String nMsg, int& nParam, int nVal, int nUpLim, int nLoLim) {
+void paramSetHandler(String nCmd, String nParamName, int& nParam, int nVal, int nUpLim, int nLoLim) {
   if(inStr == nCmd) {
-    serPrntNL(nCmd + ": " + nMsg);
+    serPrntNL(nCmd + ": set " + nParamName);
     nParam = nVal;
 
     if (nParam > nUpLim)
@@ -263,9 +379,9 @@ void paramSetHandler(String nCmd, String nMsg, int& nParam, int nVal, int nUpLim
   }
 }
 //-----------------------------------------------------------------------------
-void paramIncHandler(String nCmd, String nMsg, int &nParam, int nInc, int nUpLim, int nLoLim) {
+void paramIncHandler(String nCmd, String nParamName, int& nParam, int nInc, int nUpLim, int nLoLim) {
   if(inStr == nCmd) {
-    serPrntNL(nCmd + ": " + nMsg);
+    serPrntNL(nCmd + ": decrement " + nParamName);
     nParam += nInc;
 
     if (nParam > nUpLim)
@@ -276,9 +392,9 @@ void paramIncHandler(String nCmd, String nMsg, int &nParam, int nInc, int nUpLim
 }
 
 //-----------------------------------------------------------------------------
-void paramIncHandler(String nCmd, String nMsg, float& nParam, float nInc, float nUpLim, float nLoLim) {
+void paramIncHandler(String nCmd, String nParamName, float& nParam, float nInc, float nUpLim, float nLoLim) {
   if(inStr == nCmd) {
-    serPrntNL(nCmd + ": " + nMsg);
+    serPrntNL(nCmd + ": increment " + nParamName);
     nParam += nInc;
 
     if (nParam > nUpLim)
@@ -295,38 +411,38 @@ void taskHandleSerIn() {
     paramIncHandler("nm+", "next neopixel mode", npxlMode, 1, 5, 0);
     paramIncHandler("nm-", "next neopixel mode", npxlMode, -1, 5, 0);
 
-    paramIncHandler("rR+", "increase range", rangeR, 1, 255, 0);
-    paramIncHandler("rR-", "decrease range", rangeR, -1, 255, 0);
-    paramIncHandler("rR++", "increase range", rangeR, 5, 255, 0);
-    paramIncHandler("rR--", "decrease range", rangeR, -5, 255, 0);
+    paramIncHandler("rR+"," range", rangeR, 1, 255, 0);
+    paramIncHandler("rR-","  range", rangeR, -1, 255, 0);
+    paramIncHandler("rR++"," range", rangeR, 5, 255, 0);
+    paramIncHandler("rR--","  range", rangeR, -5, 255, 0);
 
-    paramIncHandler("rG+", "increase range", rangeG, 1, 255, 0);
-    paramIncHandler("rG-", "decrease range", rangeG, -1, 255, 0);
-    paramIncHandler("rG++", "increase range", rangeG, 5, 255, 0);
-    paramIncHandler("rG--", "decrease range", rangeG, -5, 255, 0);
+    paramIncHandler("rG+"," range", rangeG, 1, 255, 0);
+    paramIncHandler("rG-","  range", rangeG, -1, 255, 0);
+    paramIncHandler("rG++"," range", rangeG, 5, 255, 0);
+    paramIncHandler("rG--","  range", rangeG, -5, 255, 0);
 
-    paramIncHandler("rB+", "increase range", rangeB, 1, 255, 0);
-    paramIncHandler("rB-", "decrease range", rangeB, -1, 255, 0);
-    paramIncHandler("rB++", "increase range", rangeB, 5, 255, 0);
-    paramIncHandler("rB--", "decrease range", rangeB, -5, 255, 0);
+    paramIncHandler("rB+"," range", rangeB, 1, 255, 0);
+    paramIncHandler("rB-","  range", rangeB, -1, 255, 0);
+    paramIncHandler("rB++"," range", rangeB, 5, 255, 0);
+    paramIncHandler("rB--","  range", rangeB, -5, 255, 0);
 
-    paramIncHandler("ir+", "increase increment", incR, .1, 64, 0);
-    paramIncHandler("ir-", "decrease increment", incR, -.1, 64, 0);
+    paramIncHandler("ir+"," increment", incR, .1, 64, 0);
+    paramIncHandler("ir-","  increment", incR, -.1, 64, 0);
 
-    paramIncHandler("ir++", "increase increment", incR, 1, 64, 0);
-    paramIncHandler("ir--", "decrease increment", incR, -1, 64, 0);
+    paramIncHandler("ir++"," increment", incR, 1, 64, 0);
+    paramIncHandler("ir--","  increment", incR, -1, 64, 0);
 
-    paramIncHandler("ig+", "increase increment", incG, .1, 64, 0);
-    paramIncHandler("ig-", "decrease increment", incG, -.1, 64, 0);
+    paramIncHandler("ig+"," increment", incG, .1, 64, 0);
+    paramIncHandler("ig-","  increment", incG, -.1, 64, 0);
 
-    paramIncHandler("ig++", "increase increment", incG, 1, 64, 0);
-    paramIncHandler("ig--", "decrease increment", incG, -1, 64, 0);
+    paramIncHandler("ig++"," increment", incG, 1, 64, 0);
+    paramIncHandler("ig--","  increment", incG, -1, 64, 0);
 
-    paramIncHandler("ib+", "increase increment", incB, .1, 64, 0);
-    paramIncHandler("ib-", "decrease increment", incB, -.1, 64, 0);
+    paramIncHandler("ib+"," increment", incB, .1, 64, 0);
+    paramIncHandler("ib-","  increment", incB, -.1, 64, 0);
 
-    paramIncHandler("ib++", "increase increment", incB, 1, 64, 0);
-    paramIncHandler("ib--", "decrease increment", incB, -1, 64, 0);
+    paramIncHandler("ib++"," increment", incB, 1, 64, 0);
+    paramIncHandler("ib--","  increment", incB, -1, 64, 0);
 
 
     paramSetHandler("rrmx", "max range", rangeR, 255, 255, 1);
@@ -365,15 +481,6 @@ void taskHandleSerIn() {
       serPrntNL("n-: neopixel rotation stop");
 
     }
-
-    // else if (inStr == "rrmx") {
-    //   serPrntNL("rrmx: max range");
-    //   rangeR = 255;
-    // }
-    // else if (inStr == "rrmn") {
-    //   serPrntNL("rrmn: min range");
-    //   rangeR = 16;
-    // }
 
     inStr = "";
   }
@@ -430,54 +537,44 @@ void renderOledE_compass() {
   }
 
 //=================================================================================================
-int ledSine(float nInc, float nAmp) {
-
-  static int _rDir = 1;
-  static float _ang = 0;
-  float tempAng = 0;
-
-  _ang += nInc;
-
-  if(_rDir != 0){
-    if (_ang <= 0) {
-      _ang = 359;
-    }
-    else if (_ang > 359) {
-      _ang = 0;
-    }
-  }
-
-  tempAng = sin(DEG_TO_RAD * _ang);
-  tempAng++;
-  tempAng/= 2;
-  tempAng *= nAmp;
-
-  return tempAng;
-}
-
-
-//=================================================================================================
 void taskOledOut() {
   renderOledE_compass();
   }
 
 //=================================================================================================
 void taskNpxl_red_breath() {
+  uint8_t rTmp;
+  uint8_t gTmp;
+  uint8_t bTmp;
+  float rTmpFloat;
+  float gTmpFloat;
+  float bTmpFloat;
 
   static bool npxlEnShadow = false;
 
-  r = npxR.npcLedSine(incR, rangeR);
-  g = npxG.npcLedSine(incG, rangeG);
-  b = npxB.npcLedSine(incB, rangeB);
+  rTmp = npxR.npcLedSine(incR, rangeR);
+  gTmp = npxG.npcLedSine(incG, rangeG);
+  bTmp = npxB.npcLedSine(incB, rangeB);
+
+  // r = rTmp;
+  // g = gTmp;
+  // b = bTmp;
+
 
   if(nxplEn) {
     strip.clear();
     for(int i = 0; i < NUM_NEOPIXELS; i++) {
-      strip.setPixelColor(i, r, b, g);
+      // rTmpFloat = 10;
+      // rTmpFloat *= i/16.0;
+      // rTmpFloat *= 2 * PI;
+      // rTmpFloat = sin(rTmpFloat);
+
+      // rTmpFloat *= 64;
+      strip.setPixelColor(i, rTmp, gTmp, bTmp);
 
     }
     strip.show();
-    }
+  }
   else if (npxlEnShadow != nxplEn) {
     strip.clear();
     strip.show();
@@ -485,93 +582,6 @@ void taskNpxl_red_breath() {
   }
   npxlEnShadow = nxplEn;
 }
-
-//=================================================================================================
-void taskNpxl_three_red() {
-  static int rDir = 1;
-  static bool npxlEnShadow = false;
-
-  r += rDir;
-
-  switch(rDir) {
-    case -1:
-      if(r == 0) {
-        rDir = 1;
-        r = 1;
-      }
-
-    default:
-    case 0:
-      break;
-
-    case 1:
-      if (r == 127) {
-        rDir = -1;
-        r = 126;
-      }
-      break;
-  }
-
-
-  if (npxl_rotation_dir == NPX_ROT_DIR_CW) {
-    idx++;
-    if (idx >= NUM_NEOPIXELS) {
-      idx = 0;
-      }
-    }
-  else if (npxl_rotation_dir == NPX_ROT_DIR_CCW) {
-    idx--;
-    if (idx == 0)
-      idx = NUM_NEOPIXELS - 1;
-    }
-
-
-  switch (idx) {
-      default:
-        serPrntNL("idx: default");
-        npxlIdx00 = idx;
-        npxlIdx01 = idx - 1;
-        npxlIdx02 = idx - 2;
-        break;
-
-      case 65535:
-        serPrntNL("idx: 65535");
-        idx = NUM_NEOPIXELS - 1;
-        npxlIdx00 = idx;
-        npxlIdx01 = idx - 2;
-        npxlIdx02 = idx - 3;
-        break;
-
-      case 0:
-        serPrntNL("idx: 0");
-        npxlIdx00 = idx;
-        npxlIdx01 = 15;
-        npxlIdx02 = 14;
-        break;
-
-      case 1:
-        serPrntNL("idx: 1");
-        npxlIdx00 = idx;
-        npxlIdx01 = 0;
-        npxlIdx02 = 15;
-        break;
-    }
-
-  if (nxplEn) {
-    strip.clear();
-    strip.setPixelColor(npxlIdx00, 8, g, b);
-    strip.setPixelColor(npxlIdx01, 64, g, b);
-    strip.setPixelColor(npxlIdx02, 8, g, b);
-    strip.show();
-    }
-  else if (npxlEnShadow != nxplEn) {
-    strip.clear();
-    strip.show();
-
-    }
-  npxlEnShadow = nxplEn;
-  }
-
 
 //=================================================================================================
 void loop() {
