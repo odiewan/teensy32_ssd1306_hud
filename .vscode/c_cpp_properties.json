@@ -13,10 +13,11 @@
             ],
             "intelliSenseMode": "gcc-x64",
             "includePath": [
-                "C:\\Users\\Odie\\AppData\\Local\\Temp\\arduino\\sketches\\B4E1118FB5CC1AD9F386F39F21E08E17\\pch",
+                "C:\\Users\\Odie\\source\\repos\\Arduino Projects\\teensy32_ssd1306_hud\\teensy32_ssd1306_hud\\build\\pch",
                 "C:\\Users\\Odie\\AppData\\Local\\Arduino15\\packages\\teensy\\hardware\\avr\\1.59.0\\cores\\teensy3",
                 "C:\\Users\\Odie\\AppData\\Local\\Arduino15\\packages\\teensy\\hardware\\avr\\1.59.0\\libraries\\SPI",
                 "C:\\Users\\Odie\\AppData\\Local\\Arduino15\\packages\\teensy\\hardware\\avr\\1.59.0\\libraries\\Wire",
+                "C:\\Users\\Odie\\AppData\\Local\\Arduino15\\packages\\teensy\\hardware\\avr\\1.59.0\\libraries\\EEPROM",
                 "C:\\Users\\Odie\\Documents\\Arduino\\libraries\\Adafruit_GFX_Library",
                 "C:\\Users\\Odie\\Documents\\Arduino\\libraries\\Adafruit_BusIO",
                 "C:\\Users\\Odie\\Documents\\Arduino\\libraries\\Adafruit_SSD1306",
@@ -33,7 +34,7 @@
                 "c:\\users\\odie\\appdata\\local\\arduino15\\packages\\teensy\\tools\\teensy-compile\\11.3.1\\arm\\arm-none-eabi\\include"
             ],
             "forcedInclude": [
-                "C:\\Users\\Odie\\AppData\\Local\\Temp\\arduino\\sketches\\B4E1118FB5CC1AD9F386F39F21E08E17\\pch\\Arduino.h"
+                "C:\\Users\\Odie\\source\\repos\\Arduino Projects\\teensy32_ssd1306_hud\\teensy32_ssd1306_hud\\build\\pch\\Arduino.h"
             ],
             "cStandard": "c11",
             "cppStandard": "c++17",

@@ -1,3 +1,4 @@
+#line 1 "C:\\Users\\Odie\\source\\repos\\Arduino Projects\\teensy32_ssd1306_hud\\teensy32_ssd1306_hud\\.vscode\\arduino.json"
 {
     "configuration": "usb=serial,speed=96,opt=o2std,keys=en-us",
     "board": "teensy:avr:teensy31",

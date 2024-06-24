@@ -11,7 +11,7 @@
 #include <serialPrint.h>
 #include <neopixel_effects.h>
 
-#define EEPROM_SIZE     255
+#define EEPROM_SIZE     512
 
 
 
@@ -23,7 +23,6 @@
 //#define SCREEN_ADDRESS 0x3D ///< See datasheet for Address; 0x3D for 128x64, 0x3C for 128x32
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
-#define NUMFLAKES       10 // Number of snowflakes in the animation example
 #define NPXL_PIN        2
 #define NUM_NEOPIXELS        16
 
@@ -72,21 +71,11 @@ enum eeprom_registers {
   EE_REG_G_INT,
   EE_REG_B_INT,
   NUM_EEPROM_REG,
-}
-
-uint8_t eeprom[EEPROM_SIZE] = {
-uint8_t eeprom_live[EEPROM_SIZE] = {
-  0,//---EE_REG_NEOPIXEL_MODE
-  DEF_NPX_AMP_MAX, //---EE_REG_R_MAX
-  DEF_NPX_AMP_MAX, //---EE_REG_G_MAX
-  DEF_NPX_AMP_MAX, //---EE_REG_B_MAX
-  DEF_NPX_AMP_MIN, //---EE_REG_R_MIN
-  DEF_NPX_AMP_MIN, //---EE_REG_G_MIN
-  DEF_NPX_AMP_MIN, //---EE_REG_B_MIN
-  1, //---EE_REG_R_INT
-  2, //---EE_REG_G_INT
-  3, //---EE_REG_B_INT
 };
+
+uint8_t eeprom[EEPROM_SIZE] = {};
+
+uint8_t eeprom_live[EEPROM_SIZE] = {};
 char inByteBuffer[NUM_BYTES] = {};
 
 int x;
@@ -174,16 +163,32 @@ void readEEPROM() {
   serPrntNL("readEEPROM()");
   String tmpStr;
   int byte_read_cnt = 0;
-  for (int i = 0; i < EEPROM_SIZE; i++) {
+
+  for (int i = 0; i < NUM_EEPROM_REG; i++) {
     eeprom[i] = EEPROM.read(i);
-    memcpy(eeprom_live, eeprom, sizeof(eeprom_live));
+    eeprom_live[i] = eeprom[i];
     tmpStr = "readEEPROM()[";
     tmpStr += i;
     tmpStr += "]:";
-    tmpStr += eeprom[i];
+    tmpStr += eeprom_live[i];
     byte_read_cnt++;
     serPrntNL(tmpStr);
   }
+  // memcpy(eeprom_live, eeprom, sizeof(eeprom_live));
+
+  float tmpRmax = eeprom_live[EE_REG_R_MAX];
+  float tmpGmax = eeprom_live[EE_REG_G_MAX];
+  float tmpBmax = eeprom_live[EE_REG_B_MAX];
+  float tmpRmin = eeprom_live[EE_REG_R_MIN];
+  float tmpGmin = eeprom_live[EE_REG_G_MIN];
+  float tmpBmin = eeprom_live[EE_REG_B_MIN];
+  // float tmpRint = eeprom_live[EE_REG_R_INT];
+  // float tmpGint = eeprom_live[EE_REG_G_INT];
+  // float tmpBint = eeprom_live[EE_REG_B_INT];
+
+  rangeR = tmpRmax - tmpRmin;
+  rangeG = tmpGmax - tmpGmin;
+  rangeB = tmpBmax - tmpBmin;
 
   serPrntNL();
   tmpStr = "Read ";
@@ -192,7 +197,22 @@ void readEEPROM() {
   tmpStr += EEPROM_SIZE;
   tmpStr += " bytes from EEPROM";
   serPrntNL(tmpStr);
+}
+
+
+//=================================================================================================
+void serPrintLiveEEPROM() {
+  String tmpStr;
+  for (int i = 0; i < NUM_EEPROM_REG; i++) {
+    tmpStr = "serPrintLiveEEPROM()[";
+    tmpStr += i;
+    tmpStr += "]:";
+    tmpStr += eeprom_live[i];
+    tmpStr += " e:";
+    tmpStr += eeprom[i];
+    serPrntNL(tmpStr);
   }
+}
 
 //=================================================================================================
 void writeEEPROM() {
@@ -200,15 +220,15 @@ void writeEEPROM() {
   String tmpStr;
   int byte_write_cnt = 0;
 
+  for (int i = 0; i < NUM_EEPROM_REG; i++) {
 
-  for (int i = 0; i < EEPROM_SIZE; i++) {
-
-    byte_write_cnt += writeEEPROM(uint8_t nIdx);
+    byte_write_cnt += writeEepromReg(i);
     delay(5);
   }
 
   if(byte_write_cnt > 0) {
-    EEPROM.commit();
+    // serPrntNL("Commit EEPROM");
+    // EEPROM.commit();
 
     tmpStr = "Wrote ";
     tmpStr += byte_write_cnt;
@@ -219,27 +239,31 @@ void writeEEPROM() {
   else {
     tmpStr = "No changes to EEPROM";
   }
+  serPrntNL("writeEEPROM()0");
   serPrntNL(tmpStr);
-  }
+}
 
 //=================================================================================================
-int writeEEPROM(uint8_t nIdx) {
-  serPrntNL("writeEEPROM(nIdx)");
+int writeEepromReg(uint16_t nIdx) {
+  serPrnt("writeEepromReg():");
   String tmpStr;
-  int byte_write_cnt = 0;
   if (eeprom_live[nIdx] != eeprom[nIdx]) {
-    EEPROM.write(nIdx, eeprom[nIdx);
-    tmpStr = "Register changed: writeEEPROM[";
+    eeprom[nIdx] = eeprom_live[nIdx];
+    EEPROM.write(nIdx, eeprom[nIdx]);
+    tmpStr = "Register changed: writeEepromReg[";
     tmpStr += nIdx;
     tmpStr += "]:";
     tmpStr += eeprom[nIdx];
+    tmpStr += "writeEepromReg():0";
     serPrntNL(tmpStr);
-    delay(5);
-    EEPROM.commit();
     return 1;
   }
   else {
-    serPrntNL("No change to register");
+    tmpStr = "Idx:";
+    tmpStr += nIdx;
+    tmpStr += ": No change to register";
+    tmpStr += "writeEepromReg():1";
+    serPrntNL(tmpStr);
     return 0;
   }
 }
@@ -250,19 +274,23 @@ void setup() {
   int ser_wait_cnt = 0;
   pinMode(LED_BUILTIN, OUTPUT);
 
+  ledPulseTrain(1);
+
   strip.begin();
   // strip.clear();
-  strip.setPixelColor(0, eeprom[EE_REG_R_MAX], 0, 0);
-  strip.setPixelColor(8, 0, eeprom[EE_REG_R_MAX], 0);
-  strip.setPixelColor(15, 0, 0, eeprom[EE_REG_R_MAX]);
+  strip.setPixelColor(0, eeprom_live[EE_REG_R_MAX], 0, 0);
+  strip.setPixelColor(8, 0, eeprom_live[EE_REG_R_MAX], 0);
+  strip.setPixelColor(15, 0, 0, eeprom_live[EE_REG_R_MAX]);
   strip.show();
 
-  npxR = neopixel_color(eeprom[EE_REG_R_INT], eeprom[EE_REG_R_MAX]);
-  npxG = neopixel_color(eeprom[EE_REG_R_INT], eeprom[EE_REG_G_MAX]);
-  npxB = neopixel_color(eeprom[EE_REG_R_INT], eeprom[EE_REG_B_MAX]);
+
+  ledPulseTrain(2);
+  npxR = neopixel_color(eeprom_live[EE_REG_R_INT], eeprom_live[EE_REG_R_MAX]);
+  npxG = neopixel_color(eeprom_live[EE_REG_R_INT], eeprom_live[EE_REG_G_MAX]);
+  npxB = neopixel_color(eeprom_live[EE_REG_R_INT], eeprom_live[EE_REG_B_MAX]);
 
   Serial.begin(9600);
-
+  ledPulseTrain(3);
   while (!Serial && ser_wait_cnt < 10) {
     ser_wait_cnt++;
     ledToggle();
@@ -270,6 +298,8 @@ void setup() {
   }
   x = -LOGO_WIDTH / 2;
   serPrntNL("Serial OK");
+
+  ledPulseTrain(4);
 
   serPrntNL("Starting....");
   if (!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
@@ -279,17 +309,21 @@ void setup() {
   else
     serPrntNL("SSD1306 allocation OK!");
 
-  appendBootLogS("Init EEPROM");
-  EEPROM.begin(512);
-  appendBootLogS("EEPROM started");
+  // ledPulseTrain(5);
 
-  appendBootLogS("Read EEPROM contents");
+  // serPrntNL("Init EEPROM");
+  // EEPROM.begin();
+  // serPrntNL("EEPROM started");
+
+  ledPulseTrain(6);
+
+  serPrntNL("Read EEPROM contents");
   readEEPROM();
 
 
   // Show initial display buffer contents on the screen --
   // the library initializes this with an Adafruit splash screen.
-  ledPulseTrain(1);
+  ledPulseTrain(7);
   serPrntNL("render bmp00");
   display.clearDisplay();
   display.drawBitmap(64, 16, logo_bmp, LOGO_WIDTH, LOGO_HEIGHT, SSD1306_WHITE);
@@ -297,7 +331,7 @@ void setup() {
   delay(SETUP_DELAY);
 
 
-  ledPulseTrain(5);
+  ledPulseTrain(8);
   display.clearDisplay();
   display.display();
   delay(SETUP_DELAY);
@@ -310,9 +344,9 @@ void taskSerOut() {
   uint8_t tmpInt = 0;
 
 
-  if (iCount % 100) {
+  if (iCount % 3 == 0) {
 
-    tmpInt = (r + g + b)/3;
+    tmpInt = (r + g + b);
     _tmpStr = "--iC:";
     _tmpStr += iCount;
     // _tmpStr += " azim:";
@@ -325,32 +359,20 @@ void taskSerOut() {
     _tmpStr += " incR:";
     _tmpStr += incR;
 
-    // _tmpStr += " rangeR:";
-    // _tmpStr += rangeR;
+    _tmpStr += " rR:";
+    _tmpStr += rangeR;
 
     _tmpStr += "  incG:";
     _tmpStr += incG;
 
-    // _tmpStr += " rangeG:";
-    // _tmpStr += rangeG;
+    _tmpStr += " rG:";
+    _tmpStr += rangeG;
 
     _tmpStr += " incB:";
     _tmpStr += incB;
 
-    // _tmpStr += " rangeB:";
-    // _tmpStr += rangeB;
-
-
-    // _tmpStr += " idx:";
-    // _tmpStr += idx;
-
-
-    // _tmpStr += " npxlIdx00:";
-    // _tmpStr += npxlIdx00;
-    // _tmpStr += " npxlIdx01:";
-    // _tmpStr += npxlIdx01;
-    // _tmpStr += " npxlIdx02:";
-    // _tmpStr += npxlIdx02;
+    _tmpStr += " rB:";
+    _tmpStr += rangeB;
 
 
     _tmpStr += " r:";
@@ -411,38 +433,43 @@ void taskHandleSerIn() {
     paramIncHandler("nm+", "next neopixel mode", npxlMode, 1, 5, 0);
     paramIncHandler("nm-", "next neopixel mode", npxlMode, -1, 5, 0);
 
-    paramIncHandler("rR+"," range", rangeR, 1, 255, 0);
-    paramIncHandler("rR-","  range", rangeR, -1, 255, 0);
-    paramIncHandler("rR++"," range", rangeR, 5, 255, 0);
-    paramIncHandler("rR--","  range", rangeR, -5, 255, 0);
+    float tmpRmax = eeprom_live[EE_REG_R_MAX];
+    float tmpGmax = eeprom_live[EE_REG_G_MAX];
+    float tmpBmax = eeprom_live[EE_REG_B_MAX];
+    float tmpRmin = eeprom_live[EE_REG_R_MIN];
+    float tmpGmin = eeprom_live[EE_REG_G_MIN];
+    float tmpBmin = eeprom_live[EE_REG_B_MIN];
+    float tmpRint = eeprom_live[EE_REG_R_INT];
+    float tmpGint = eeprom_live[EE_REG_G_INT];
+    float tmpBint = eeprom_live[EE_REG_B_INT];
 
-    paramIncHandler("rG+"," range", rangeG, 1, 255, 0);
-    paramIncHandler("rG-","  range", rangeG, -1, 255, 0);
-    paramIncHandler("rG++"," range", rangeG, 5, 255, 0);
-    paramIncHandler("rG--","  range", rangeG, -5, 255, 0);
 
-    paramIncHandler("rB+"," range", rangeB, 1, 255, 0);
-    paramIncHandler("rB-","  range", rangeB, -1, 255, 0);
-    paramIncHandler("rB++"," range", rangeB, 5, 255, 0);
-    paramIncHandler("rB--","  range", rangeB, -5, 255, 0);
 
-    paramIncHandler("ir+"," increment", incR, .1, 64, 0);
-    paramIncHandler("ir-","  increment", incR, -.1, 64, 0);
+    paramIncHandler("rR+", " range",   tmpRmax, 1, 255, 0);
+    paramIncHandler("rR-", "  range",  tmpRmax, -1, 255, 0);
+    paramIncHandler("rR++", " range",  tmpRmax, 5, 255, 0);
+    paramIncHandler("rR--", "  range", tmpRmax, -5, 255, 0);
+    paramIncHandler("rG+"," range",    tmpGmax, 1, 255, 0);
+    paramIncHandler("rG-","  range",   tmpGmax, -1, 255, 0);
+    paramIncHandler("rG++"," range",   tmpGmax, 5, 255, 0);
+    paramIncHandler("rG--","  range",  tmpGmax, -5, 255, 0);
+    paramIncHandler("rB+"," range",    tmpBmax, 1, 255, 0);
+    paramIncHandler("rB-","  range",   tmpBmax, -1, 255, 0);
+    paramIncHandler("rB++"," range",   tmpBmax, 5, 255, 0);
+    paramIncHandler("rB--","  range",  tmpBmax, -5, 255, 0);
 
-    paramIncHandler("ir++"," increment", incR, 1, 64, 0);
-    paramIncHandler("ir--","  increment", incR, -1, 64, 0);
-
-    paramIncHandler("ig+"," increment", incG, .1, 64, 0);
-    paramIncHandler("ig-","  increment", incG, -.1, 64, 0);
-
-    paramIncHandler("ig++"," increment", incG, 1, 64, 0);
-    paramIncHandler("ig--","  increment", incG, -1, 64, 0);
-
-    paramIncHandler("ib+"," increment", incB, .1, 64, 0);
-    paramIncHandler("ib-","  increment", incB, -.1, 64, 0);
-
-    paramIncHandler("ib++"," increment", incB, 1, 64, 0);
-    paramIncHandler("ib--","  increment", incB, -1, 64, 0);
+    paramIncHandler("ir+", " increment",    tmpRint, .1, 64, 0);
+    paramIncHandler("ir-", "  increment",   tmpRint, -.1, 64, 0);
+    paramIncHandler("ir++", " increment",   tmpRint, .1, 64, 0);
+    paramIncHandler("ir--", "  increment",  tmpRint, -.1, 64, 0);
+    paramIncHandler("ig+", " increment",    tmpGint, .1, 64, 0);
+    paramIncHandler("ig-", "  increment",   tmpGint, -.1, 64, 0);
+    paramIncHandler("ig++", " increment",   tmpGint, 1, 64, 0);
+    paramIncHandler("ig--", "  increment",  tmpGint, -1, 64, 0);
+    paramIncHandler("ib+", " increment",    tmpBint, 1, 64, 0);
+    paramIncHandler("ib-", "  increment",   tmpBint, -1, 64, 0);
+    paramIncHandler("ib++", " increment",   tmpBint, 1, 64, 0);
+    paramIncHandler("ib--", "  increment",  tmpBint, -1, 64, 0);
 
 
     paramSetHandler("rrmx", "max range", rangeR, 255, 255, 1);
@@ -456,6 +483,17 @@ void taskHandleSerIn() {
     paramSetHandler("rbmx", "max range", rangeB, 255, 255, 1);
     paramSetHandler("rbmd", "mid range", rangeB, 127, 255, 1);
     paramSetHandler("rbmn", "min range", rangeB, 1, 255, 1);
+
+
+    eeprom_live[EE_REG_R_MAX] = tmpRmax;
+    eeprom_live[EE_REG_G_MAX] = tmpGmax;
+    eeprom_live[EE_REG_B_MAX] = tmpBmax;
+    eeprom_live[EE_REG_R_MIN] = tmpRmin;
+    eeprom_live[EE_REG_G_MIN] = tmpGmin;
+    eeprom_live[EE_REG_B_MIN] = tmpBmin;
+    eeprom_live[EE_REG_R_INT] = tmpRint;
+    eeprom_live[EE_REG_G_INT] = tmpGint;
+    eeprom_live[EE_REG_B_INT] = tmpBint;
 
     if (inStr == "non") {
       nxplEn = true;
@@ -480,6 +518,38 @@ void taskHandleSerIn() {
       npxl_rotation_dir = 0;
       serPrntNL("n-: neopixel rotation stop");
 
+    }
+    else if (inStr == "save") {
+      serPrntNL("save: save eeprom");
+      writeEEPROM();
+      serPrntNL("save: eeprom saved");
+
+    }
+    else if (inStr == "read") {
+      serPrntNL("read: read eeprom");
+      readEEPROM();
+      serPrntNL("read: eeprom read");
+
+    }
+    else if (inStr == "prnt") {
+      serPrntNL("prnt: read eeprom");
+      serPrintLiveEEPROM();
+
+    }
+    else if (inStr == "init") {
+      serPrntNL("init: init eeprom values");
+
+      eeprom_live[EE_REG_NEOPIXEL_MODE] = 0;
+      eeprom_live[EE_REG_R_MAX] = DEF_NPX_AMP_MAX;
+      eeprom_live[EE_REG_G_MAX] = DEF_NPX_AMP_MAX;
+      eeprom_live[EE_REG_B_MAX] = DEF_NPX_AMP_MAX;
+      eeprom_live[EE_REG_R_MIN] = DEF_NPX_AMP_MIN;
+      eeprom_live[EE_REG_G_MIN] = DEF_NPX_AMP_MIN;
+      eeprom_live[EE_REG_B_MIN] = DEF_NPX_AMP_MIN;
+      eeprom_live[EE_REG_R_INT] = 1;
+      eeprom_live[EE_REG_G_INT] = 2;
+      eeprom_live[EE_REG_B_INT] = 3;
+      serPrintLiveEEPROM();
     }
 
     inStr = "";
@@ -546,9 +616,9 @@ void taskNpxl_red_breath() {
   uint8_t rTmp;
   uint8_t gTmp;
   uint8_t bTmp;
-  float rTmpFloat;
-  float gTmpFloat;
-  float bTmpFloat;
+  // float rTmpFloat;
+  // float gTmpFloat;
+  // float bTmpFloat;
 
   static bool npxlEnShadow = false;
 
@@ -556,9 +626,9 @@ void taskNpxl_red_breath() {
   gTmp = npxG.npcLedSine(incG, rangeG);
   bTmp = npxB.npcLedSine(incB, rangeB);
 
-  // r = rTmp;
-  // g = gTmp;
-  // b = bTmp;
+  r = rTmp;
+  g = gTmp;
+  b = bTmp;
 
 
   if(nxplEn) {
