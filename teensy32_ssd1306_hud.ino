@@ -71,20 +71,21 @@ enum eeprom_registers {
   EE_REG_G_INT,
   EE_REG_B_INT,
   NUM_EEPROM_REG,
-};
+  };
 
 uint8_t eeprom[EEPROM_SIZE] = {};
 
 uint8_t eeprom_live[EEPROM_SIZE] = {};
 char inByteBuffer[NUM_BYTES] = {};
 
+struct __attribute__((__packed__)) colorVector {
+  uint8_t r, g, b;
+};
+
 int x;
 int dir;
 int npxlMode = 0;
 uint16_t idx = 0;
-uint16_t npxlIdx00 = 0;
-uint16_t npxlIdx01 = 0;
-uint16_t npxlIdx02 = 0;
 uint8_t npxl_rotation_dir = true;
 
 int def_count = 0;
@@ -95,6 +96,7 @@ int rangeR = 32;
 int rangeG = 32;
 int rangeB = 32;
 
+colorVector c00 = { 0,0,0 };
 float incR = 2;
 float incG = 4;
 float incB = 8;
@@ -110,9 +112,81 @@ int64_t iCount = 0;
 Adafruit_NeoPixel strip(NUM_NEOPIXELS, NPXL_PIN, NEO_GRB + NEO_KHZ800);
 bool nxplEn = true;
 
+bool btnState = false;
+bool btnStateR = false;
+bool btnStateG = false;
+bool btnStateB = false;
+bool btnStateRG = false;
+
 neopixel_color npxR;
 neopixel_color npxG;
 neopixel_color npxB;
+
+
+class npx_ring_event {
+  public:
+    int nreTmr;
+    bool *nreBtn;
+    bool nreEn;
+    bool nreEnShadow;
+    colorVector nreCV;
+
+    uint8_t nreR;
+    uint8_t nreG;
+    uint8_t nreB;
+
+
+    //=================================================================================================
+    npx_ring_event() {
+      nreTmr = 0;
+      nreBtn = NULL;
+      nreEnShadow = false;
+      nreEn = false;
+      nreCV = {0,0,0};
+      nreR = 0;
+      nreG = 0;
+      nreB = 0;
+    }
+
+    //=================================================================================================
+    npx_ring_event(bool *nEn, uint8_t nR, uint8_t nG, uint8_t nB) {
+      nreTmr = 0;
+      nreBtn = nEn;
+      nreEn = *nreBtn;
+      nreEnShadow = false;
+      nreCV = { 0,0,0 };
+      nreR = nR;
+      nreG = nG;
+      nreB = nB;
+    }
+
+  //=================================================================================================
+  void nreBtnOvr(colorVector *nCV) {
+    nreEn = *nreBtn;
+    if (nreEnShadow != nreEn && nreEn == true)
+      nreTmr = 12;
+
+    if (nreTmr > 0) {
+      nCV->r = nreR;
+      nCV->g = nreG;
+      nCV->b = nreB;
+      nreTmr--;
+    }
+    else {
+      nreEn = false;
+    }
+
+    nreEnShadow = nreEn;
+    *nreBtn = nreEn;
+  }
+};
+//=============================================================================
+
+npx_ring_event nre0;
+npx_ring_event nreR;
+npx_ring_event nreG;
+npx_ring_event nreB;
+npx_ring_event nreRG;
 
 
 //=================================================================================================
@@ -120,7 +194,7 @@ void ledToggle() {
   static bool bit = false;
   bit = !bit;
   digitalWrite(LED_BUILTIN, bit);
-  }
+}
 
 //=================================================================================================
 int azim_to_x() {
@@ -140,7 +214,7 @@ String recvWithEndMarker() {
         inByteBuffer[bCnt] = rc;
         }
       bCnt++;
-      }
+    }
     else
       serPrntNL("buffer overflow");
   }
@@ -149,14 +223,14 @@ String recvWithEndMarker() {
     serPrntVNL("Rx'ed ", bCnt, " bytes");
     inByteBuffer[bCnt] = '\0';
     inStr = inByteBuffer;
-    }
+  }
   else
     inStr = "";
 
   bCnt = 0;
 
   return inStr;
-  }
+}
 
 //=================================================================================================
 void readEEPROM() {
@@ -173,7 +247,7 @@ void readEEPROM() {
     tmpStr += eeprom_live[i];
     byte_read_cnt++;
     serPrntNL(tmpStr);
-  }
+    }
   // memcpy(eeprom_live, eeprom, sizeof(eeprom_live));
 
   float tmpRmax = eeprom_live[EE_REG_R_MAX];
@@ -226,10 +300,7 @@ void writeEEPROM() {
     delay(5);
   }
 
-  if(byte_write_cnt > 0) {
-    // serPrntNL("Commit EEPROM");
-    // EEPROM.commit();
-
+  if (byte_write_cnt > 0) {
     tmpStr = "Wrote ";
     tmpStr += byte_write_cnt;
     tmpStr += " of ";
@@ -239,6 +310,7 @@ void writeEEPROM() {
   else {
     tmpStr = "No changes to EEPROM";
   }
+
   serPrntNL("writeEEPROM()0");
   serPrntNL(tmpStr);
 }
@@ -257,7 +329,7 @@ int writeEepromReg(uint16_t nIdx) {
     tmpStr += "writeEepromReg():0";
     serPrntNL(tmpStr);
     return 1;
-  }
+    }
   else {
     tmpStr = "Idx:";
     tmpStr += nIdx;
@@ -265,8 +337,8 @@ int writeEepromReg(uint16_t nIdx) {
     tmpStr += "writeEepromReg():1";
     serPrntNL(tmpStr);
     return 0;
+    }
   }
-}
 
 
 //=================================================================================================
@@ -295,7 +367,7 @@ void setup() {
     ser_wait_cnt++;
     ledToggle();
     delay(250);
-  }
+    }
   x = -LOGO_WIDTH / 2;
   serPrntNL("Serial OK");
 
@@ -309,11 +381,12 @@ void setup() {
   else
     serPrntNL("SSD1306 allocation OK!");
 
-  // ledPulseTrain(5);
+  nre0 = npx_ring_event(&btnState, 0, 0 , 0);
+  nreR = npx_ring_event(&btnStateR, 255, 0 , 0);
+  nreG = npx_ring_event(&btnStateG, 0, 255 , 0);
+  nreB = npx_ring_event(&btnStateB, 0, 0 , 255);
+  nreRG = npx_ring_event(&btnStateRG, 255, 255, 0);
 
-  // serPrntNL("Init EEPROM");
-  // EEPROM.begin();
-  // serPrntNL("EEPROM started");
 
   ledPulseTrain(6);
 
@@ -356,31 +429,59 @@ void taskSerOut() {
     _tmpStr += " npxlMode:";
     _tmpStr += npxlMode;
 
-    _tmpStr += " incR:";
-    _tmpStr += incR;
 
     _tmpStr += " rR:";
     _tmpStr += rangeR;
-
-    _tmpStr += "  incG:";
-    _tmpStr += incG;
-
     _tmpStr += " rG:";
     _tmpStr += rangeG;
-
-    _tmpStr += " incB:";
-    _tmpStr += incB;
-
     _tmpStr += " rB:";
     _tmpStr += rangeB;
 
 
+    _tmpStr += " incR:";
+    _tmpStr += incR;
+    _tmpStr += "  incG:";
+    _tmpStr += incG;
+    _tmpStr += " incB:";
+    _tmpStr += incB;
+
+    // _tmpStr += " nreR.nreEnShadow";
+    // _tmpStr += nreR.nreEnShadow;
+
+    // _tmpStr += " nreR.nreEn";
+    // _tmpStr += nreR.nreEn;
+
+    // _tmpStr += " nreR.nreTmr";
+    // _tmpStr += nreR.nreTmr;
+
+    // _tmpStr += " btnState";
+    // _tmpStr += btnState;
+
+    // _tmpStr += " btnRState";
+    // _tmpStr += btnStateR;
+
+    // _tmpStr += " btnGState";
+    // _tmpStr += btnStateG;
+
+    // _tmpStr += " btnBState";
+    // _tmpStr += btnStateB;
+
+
+
+
     _tmpStr += " r:";
-    _tmpStr += r;
+    _tmpStr += c00.r;
     _tmpStr += " b:";
-    _tmpStr += b;
+    _tmpStr += c00.b;
     _tmpStr += " g:";
-    _tmpStr += g;
+    _tmpStr += c00.g;
+
+    // _tmpStr += " r:";
+    // _tmpStr += r;
+    // _tmpStr += " b:";
+    // _tmpStr += b;
+    // _tmpStr += " g:";
+    // _tmpStr += g;
     _tmpStr += " tmpInt:";
     _tmpStr += tmpInt;
 
@@ -390,7 +491,7 @@ void taskSerOut() {
 
 //-----------------------------------------------------------------------------
 void paramSetHandler(String nCmd, String nParamName, int& nParam, int nVal, int nUpLim, int nLoLim) {
-  if(inStr == nCmd) {
+  if (inStr == nCmd) {
     serPrntNL(nCmd + ": set " + nParamName);
     nParam = nVal;
 
@@ -398,11 +499,11 @@ void paramSetHandler(String nCmd, String nParamName, int& nParam, int nVal, int 
       nParam = nUpLim;
     else if (nParam < nLoLim)
       nParam = nLoLim;
+    }
   }
-}
 //-----------------------------------------------------------------------------
 void paramIncHandler(String nCmd, String nParamName, int& nParam, int nInc, int nUpLim, int nLoLim) {
-  if(inStr == nCmd) {
+  if (inStr == nCmd) {
     serPrntNL(nCmd + ": decrement " + nParamName);
     nParam += nInc;
 
@@ -410,12 +511,12 @@ void paramIncHandler(String nCmd, String nParamName, int& nParam, int nInc, int 
       nParam = nUpLim;
     else if (nParam < nLoLim)
       nParam = nLoLim;
+    }
   }
-}
 
 //-----------------------------------------------------------------------------
 void paramIncHandler(String nCmd, String nParamName, float& nParam, float nInc, float nUpLim, float nLoLim) {
-  if(inStr == nCmd) {
+  if (inStr == nCmd) {
     serPrntNL(nCmd + ": increment " + nParamName);
     nParam += nInc;
 
@@ -423,8 +524,8 @@ void paramIncHandler(String nCmd, String nParamName, float& nParam, float nInc, 
       nParam = nUpLim;
     else if (nParam < nLoLim)
       nParam = nLoLim;
+    }
   }
-}
 
 //-----------------------------------------------------------------------------
 void taskHandleSerIn() {
@@ -445,31 +546,31 @@ void taskHandleSerIn() {
 
 
 
-    paramIncHandler("rR+", " range",   tmpRmax, 1, 255, 0);
-    paramIncHandler("rR-", "  range",  tmpRmax, -1, 255, 0);
-    paramIncHandler("rR++", " range",  tmpRmax, 5, 255, 0);
+    paramIncHandler("rR+", " range", tmpRmax, 1, 255, 0);
+    paramIncHandler("rR-", "  range", tmpRmax, -1, 255, 0);
+    paramIncHandler("rR++", " range", tmpRmax, 5, 255, 0);
     paramIncHandler("rR--", "  range", tmpRmax, -5, 255, 0);
-    paramIncHandler("rG+"," range",    tmpGmax, 1, 255, 0);
-    paramIncHandler("rG-","  range",   tmpGmax, -1, 255, 0);
-    paramIncHandler("rG++"," range",   tmpGmax, 5, 255, 0);
-    paramIncHandler("rG--","  range",  tmpGmax, -5, 255, 0);
-    paramIncHandler("rB+"," range",    tmpBmax, 1, 255, 0);
-    paramIncHandler("rB-","  range",   tmpBmax, -1, 255, 0);
-    paramIncHandler("rB++"," range",   tmpBmax, 5, 255, 0);
-    paramIncHandler("rB--","  range",  tmpBmax, -5, 255, 0);
+    paramIncHandler("rG+", " range", tmpGmax, 1, 255, 0);
+    paramIncHandler("rG-", "  range", tmpGmax, -1, 255, 0);
+    paramIncHandler("rG++", " range", tmpGmax, 5, 255, 0);
+    paramIncHandler("rG--", "  range", tmpGmax, -5, 255, 0);
+    paramIncHandler("rB+", " range", tmpBmax, 1, 255, 0);
+    paramIncHandler("rB-", "  range", tmpBmax, -1, 255, 0);
+    paramIncHandler("rB++", " range", tmpBmax, 5, 255, 0);
+    paramIncHandler("rB--", "  range", tmpBmax, -5, 255, 0);
 
-    paramIncHandler("ir+", " increment",    tmpRint, .1, 64, 0);
-    paramIncHandler("ir-", "  increment",   tmpRint, -.1, 64, 0);
-    paramIncHandler("ir++", " increment",   tmpRint, .1, 64, 0);
-    paramIncHandler("ir--", "  increment",  tmpRint, -.1, 64, 0);
-    paramIncHandler("ig+", " increment",    tmpGint, .1, 64, 0);
-    paramIncHandler("ig-", "  increment",   tmpGint, -.1, 64, 0);
-    paramIncHandler("ig++", " increment",   tmpGint, 1, 64, 0);
-    paramIncHandler("ig--", "  increment",  tmpGint, -1, 64, 0);
-    paramIncHandler("ib+", " increment",    tmpBint, 1, 64, 0);
-    paramIncHandler("ib-", "  increment",   tmpBint, -1, 64, 0);
-    paramIncHandler("ib++", " increment",   tmpBint, 1, 64, 0);
-    paramIncHandler("ib--", "  increment",  tmpBint, -1, 64, 0);
+    paramIncHandler("ir+", " increment", tmpRint, .1, 64, 0);
+    paramIncHandler("ir-", "  increment", tmpRint, -.1, 64, 0);
+    paramIncHandler("ir++", " increment", tmpRint, .1, 64, 0);
+    paramIncHandler("ir--", "  increment", tmpRint, -.1, 64, 0);
+    paramIncHandler("ig+", " increment", tmpGint, .1, 64, 0);
+    paramIncHandler("ig-", "  increment", tmpGint, -.1, 64, 0);
+    paramIncHandler("ig++", " increment", tmpGint, 1, 64, 0);
+    paramIncHandler("ig--", "  increment", tmpGint, -1, 64, 0);
+    paramIncHandler("ib+", " increment", tmpBint, 1, 64, 0);
+    paramIncHandler("ib-", "  increment", tmpBint, -1, 64, 0);
+    paramIncHandler("ib++", " increment", tmpBint, 1, 64, 0);
+    paramIncHandler("ib--", "  increment", tmpBint, -1, 64, 0);
 
 
     paramSetHandler("rrmx", "max range", rangeR, 255, 255, 1);
@@ -498,44 +599,44 @@ void taskHandleSerIn() {
     if (inStr == "non") {
       nxplEn = true;
       serPrntNL("on: neopixel ring on");
-    }
+      }
 
     else if (inStr == "noff") {
       nxplEn = false;
       serPrntNL("off: neopixel ring off");
-    }
+      }
 
     else if (inStr == "n+") {
       npxl_rotation_dir = 2;
       serPrntNL("n+: neopixel rotation CCW");
-    }
+      }
     else if (inStr == "n-") {
       npxl_rotation_dir = 1;
       serPrntNL("n-: neopixel rotation CCW");
-    }
+      }
 
     else if (inStr == "n0") {
       npxl_rotation_dir = 0;
       serPrntNL("n-: neopixel rotation stop");
 
-    }
+      }
     else if (inStr == "save") {
       serPrntNL("save: save eeprom");
       writeEEPROM();
       serPrntNL("save: eeprom saved");
 
-    }
+      }
     else if (inStr == "read") {
       serPrntNL("read: read eeprom");
       readEEPROM();
       serPrntNL("read: eeprom read");
 
-    }
+      }
     else if (inStr == "prnt") {
       serPrntNL("prnt: read eeprom");
       serPrintLiveEEPROM();
 
-    }
+      }
     else if (inStr == "init") {
       serPrntNL("init: init eeprom values");
 
@@ -551,6 +652,26 @@ void taskHandleSerIn() {
       eeprom_live[EE_REG_B_INT] = 3;
       serPrintLiveEEPROM();
     }
+    else if (inStr == "btn") {
+      serPrntNL("btn: sim button");
+      btnState = true;
+    }
+    else if (inStr == "btnR") {
+      serPrntNL("btnR: sim button");
+      btnStateR = true;
+    }
+    else if (inStr == "btnG") {
+      serPrntNL("btnG: sim button");
+      btnStateG = true;
+    }
+    else if (inStr == "btnB") {
+      serPrntNL("btnB: sim button");
+      btnStateB = true;
+    }
+    else if (inStr == "btnRG") {
+      serPrntNL("btnRG: sim button");
+      btnStateRG = true;
+    }
 
     inStr = "";
   }
@@ -558,120 +679,106 @@ void taskHandleSerIn() {
 
 //=================================================================================================
 void renderOledE_compass() {
-  // static int dir = 0;
-  // static int x0 = 0;
-
-  // static int lLim = -LOGO_WIDTH/2;
-  // static int rLim = display.width() - (LOGO_WIDTH/2);
-
 
   switch (dir) {
+    case 1:
+      display.fillRect(x, COMPASS_Y, LOGO_WIDTH, LOGO_HEIGHT, SSD1306_BLACK);
+      azim++;
+      x = azim_to_x();
+      display.drawBitmap(x, COMPASS_Y, diamond, LOGO_WIDTH, LOGO_HEIGHT, SSD1306_WHITE);
+      dir_up_count++;
+      break;
 
-      case 1:
-        display.fillRect(x, COMPASS_Y, LOGO_WIDTH, LOGO_HEIGHT, SSD1306_BLACK);
-        azim++;
-        x = azim_to_x();
-        display.drawBitmap(x, COMPASS_Y, diamond, LOGO_WIDTH, LOGO_HEIGHT, SSD1306_WHITE);
-        dir_up_count++;
-        break;
+    case -1:
+      display.fillRect(x, COMPASS_Y, LOGO_WIDTH, LOGO_HEIGHT, SSD1306_BLACK);
+      azim--;
+      x = azim_to_x();
+      display.drawBitmap(x, COMPASS_Y, diamond, LOGO_WIDTH, LOGO_HEIGHT, SSD1306_WHITE);
+      dir_dn_count++;
+      break;
 
-      case -1:
-        display.fillRect(x, COMPASS_Y, LOGO_WIDTH, LOGO_HEIGHT, SSD1306_BLACK);
-        azim--;
-        x = azim_to_x();
-        display.drawBitmap(x, COMPASS_Y, diamond, LOGO_WIDTH, LOGO_HEIGHT, SSD1306_WHITE);
-        dir_dn_count++;
-        break;
-
-      default:
-      case 0:
-        // display.drawBitmap(x, COMPASS_Y, diamond, LOGO_WIDTH, LOGO_HEIGHT, SSD1306_WHITE);
-        def_count++;
-        break;
-    }
-
-
+    default:
+    case 0:
+      // display.drawBitmap(x, COMPASS_Y, diamond, LOGO_WIDTH, LOGO_HEIGHT, SSD1306_WHITE);
+      def_count++;
+      break;
+  }
 
   if (azim > 359) {
     azim = 359;
     dir = -1;
-    }
+  }
 
   if (azim < 0) {
     azim = 0;
     x = azim_to_x();;
     dir = 1;
-    }
-
-
   }
+}
+
+//=================================================================================================
+void setAllNeoPixels() {
+  for (int i = 0; i < NUM_NEOPIXELS; i++)
+    strip.setPixelColor(i, c00.r, c00.g, c00.b);
+  strip.show();
+}
 
 //=================================================================================================
 void taskOledOut() {
   renderOledE_compass();
-  }
+}
 
 //=================================================================================================
-void taskNpxl_red_breath() {
-  uint8_t rTmp;
-  uint8_t gTmp;
-  uint8_t bTmp;
-  // float rTmpFloat;
-  // float gTmpFloat;
-  // float bTmpFloat;
+void npxl_red_breath() {
+  c00.r = npxR.npcLedSine(incR, rangeR);
+  c00.g = npxG.npcLedSine(incG, rangeG);
+  c00.b = npxB.npcLedSine(incB, rangeB);
 
+}
+
+//=================================================================================================
+void taskNeopixelRing() {
   static bool npxlEnShadow = false;
+  npxl_red_breath();
 
-  rTmp = npxR.npcLedSine(incR, rangeR);
-  gTmp = npxG.npcLedSine(incG, rangeG);
-  bTmp = npxB.npcLedSine(incB, rangeB);
-
-  r = rTmp;
-  g = gTmp;
-  b = bTmp;
-
-
-  if(nxplEn) {
+  if (nxplEn) {
     strip.clear();
-    for(int i = 0; i < NUM_NEOPIXELS; i++) {
-      // rTmpFloat = 10;
-      // rTmpFloat *= i/16.0;
-      // rTmpFloat *= 2 * PI;
-      // rTmpFloat = sin(rTmpFloat);
+    // rTmpFloat = 10;
+    // rTmpFloat *= i/16.0;
+    // rTmpFloat *= 2 * PI;
+    // rTmpFloat = sin(rTmpFloat);
 
-      // rTmpFloat *= 64;
-      strip.setPixelColor(i, rTmp, gTmp, bTmp);
+    nre0.nreBtnOvr(&c00);
+    nreR.nreBtnOvr(&c00);
+    nreG.nreBtnOvr(&c00);
+    nreB.nreBtnOvr(&c00);
+    nreRG.nreBtnOvr(&c00);
 
-    }
-    strip.show();
+    setAllNeoPixels();
   }
   else if (npxlEnShadow != nxplEn) {
     strip.clear();
     strip.show();
-
   }
+
   npxlEnShadow = nxplEn;
-}
+  }
 
 //=================================================================================================
 void loop() {
-
   taskHandleSerIn();
 
   if (iCount == 15) {
     dir = 1;
-  }
+    }
 
-  if(iCount % 1 == 0)
-    taskNpxl_red_breath();
+  if (iCount % 1 == 0)
+    taskNeopixelRing();
 
   taskOledOut();
   taskSerOut();
 
   display.display();
-
   iCount++;
   delay(10);
-
-
   }
