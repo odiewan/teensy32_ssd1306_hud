@@ -10,6 +10,7 @@
 #include <gfx_bitmaps.h>
 #include <serialPrint.h>
 #include <neopixel_effects.h>
+#include <npx_ring_event.h>
 
 #define EEPROM_SIZE     512
 
@@ -59,6 +60,28 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 // #define DEG_TO_RAD float(PI/80)
 
 
+enum npx_modes {
+  NPX_MD_OFF,
+  NPX_MD_ASYC_SINE,
+  NPX_MD_RED_SINE,
+  NPX_MD_GREEN_SINE,
+  NPX_MD_BLUE_SINE,
+  NPX_MD_STATIC,
+  NPX_MD_STATIC_RED,
+  NPX_MD_STATIC_GREEN,
+  NPX_MD_STATIC_BLUE,
+  NUM_NPX_MODES,
+  };
+
+String npx_mode_strs[] = {
+  "OFF",
+  "ASYC_SINE",
+  "RED_SINE",
+  "GREEN_SINE",
+  "BLUE_SINE",
+  "STATIC",
+  };
+
 enum eeprom_registers {
   EE_REG_NEOPIXEL_MODE,
   EE_REG_R_MAX,
@@ -78,13 +101,11 @@ uint8_t eeprom[EEPROM_SIZE] = {};
 uint8_t eeprom_live[EEPROM_SIZE] = {};
 char inByteBuffer[NUM_BYTES] = {};
 
-struct __attribute__((__packed__)) colorVector {
-  uint8_t r, g, b;
-};
+
 
 int x;
 int dir;
-int npxlMode = 0;
+int npxlMode = NPX_MD_ASYC_SINE;
 uint16_t idx = 0;
 uint8_t npxl_rotation_dir = true;
 
@@ -92,9 +113,7 @@ int def_count = 0;
 int dir_up_count = 0;
 int dir_dn_count = 0;
 int azim = 0;
-int rangeR = 32;
-int rangeG = 32;
-int rangeB = 32;
+
 
 colorVector c00 = { 0,0,0 };
 float incR = 2;
@@ -122,66 +141,6 @@ neopixel_color npxR;
 neopixel_color npxG;
 neopixel_color npxB;
 
-
-class npx_ring_event {
-  public:
-    int nreTmr;
-    bool *nreBtn;
-    bool nreEn;
-    bool nreEnShadow;
-    colorVector nreCV;
-
-    uint8_t nreR;
-    uint8_t nreG;
-    uint8_t nreB;
-
-
-    //=================================================================================================
-    npx_ring_event() {
-      nreTmr = 0;
-      nreBtn = NULL;
-      nreEnShadow = false;
-      nreEn = false;
-      nreCV = {0,0,0};
-      nreR = 0;
-      nreG = 0;
-      nreB = 0;
-    }
-
-    //=================================================================================================
-    npx_ring_event(bool *nEn, uint8_t nR, uint8_t nG, uint8_t nB) {
-      nreTmr = 0;
-      nreBtn = nEn;
-      nreEn = *nreBtn;
-      nreEnShadow = false;
-      nreCV = { 0,0,0 };
-      nreR = nR;
-      nreG = nG;
-      nreB = nB;
-    }
-
-  //=================================================================================================
-  void nreBtnOvr(colorVector *nCV) {
-    nreEn = *nreBtn;
-    if (nreEnShadow != nreEn && nreEn == true)
-      nreTmr = 12;
-
-    if (nreTmr > 0) {
-      nCV->r = nreR;
-      nCV->g = nreG;
-      nCV->b = nreB;
-      nreTmr--;
-    }
-    else {
-      nreEn = false;
-    }
-
-    nreEnShadow = nreEn;
-    *nreBtn = nreEn;
-  }
-};
-//=============================================================================
-
 npx_ring_event nre0;
 npx_ring_event nreR;
 npx_ring_event nreG;
@@ -194,12 +153,12 @@ void ledToggle() {
   static bool bit = false;
   bit = !bit;
   digitalWrite(LED_BUILTIN, bit);
-}
+  }
 
 //=================================================================================================
 int azim_to_x() {
   return map(azim, 0, 359, LOGO_X_MIN, LOGO_X_MAX);
-}
+  }
 
 //-----------------------------------------------------------------------------
 String recvWithEndMarker() {
@@ -214,23 +173,23 @@ String recvWithEndMarker() {
         inByteBuffer[bCnt] = rc;
         }
       bCnt++;
-    }
+      }
     else
       serPrntNL("buffer overflow");
-  }
+    }
 
   if (bCnt > 0) {
     serPrntVNL("Rx'ed ", bCnt, " bytes");
     inByteBuffer[bCnt] = '\0';
     inStr = inByteBuffer;
-  }
+    }
   else
     inStr = "";
 
   bCnt = 0;
 
   return inStr;
-}
+  }
 
 //=================================================================================================
 void readEEPROM() {
@@ -250,19 +209,7 @@ void readEEPROM() {
     }
   // memcpy(eeprom_live, eeprom, sizeof(eeprom_live));
 
-  float tmpRmax = eeprom_live[EE_REG_R_MAX];
-  float tmpGmax = eeprom_live[EE_REG_G_MAX];
-  float tmpBmax = eeprom_live[EE_REG_B_MAX];
-  float tmpRmin = eeprom_live[EE_REG_R_MIN];
-  float tmpGmin = eeprom_live[EE_REG_G_MIN];
-  float tmpBmin = eeprom_live[EE_REG_B_MIN];
-  // float tmpRint = eeprom_live[EE_REG_R_INT];
-  // float tmpGint = eeprom_live[EE_REG_G_INT];
-  // float tmpBint = eeprom_live[EE_REG_B_INT];
-
-  rangeR = tmpRmax - tmpRmin;
-  rangeG = tmpGmax - tmpGmin;
-  rangeB = tmpBmax - tmpBmin;
+  // calcColorRange();
 
   serPrntNL();
   tmpStr = "Read ";
@@ -271,7 +218,7 @@ void readEEPROM() {
   tmpStr += EEPROM_SIZE;
   tmpStr += " bytes from EEPROM";
   serPrntNL(tmpStr);
-}
+  }
 
 
 //=================================================================================================
@@ -285,8 +232,8 @@ void serPrintLiveEEPROM() {
     tmpStr += " e:";
     tmpStr += eeprom[i];
     serPrntNL(tmpStr);
+    }
   }
-}
 
 //=================================================================================================
 void writeEEPROM() {
@@ -298,7 +245,7 @@ void writeEEPROM() {
 
     byte_write_cnt += writeEepromReg(i);
     delay(5);
-  }
+    }
 
   if (byte_write_cnt > 0) {
     tmpStr = "Wrote ";
@@ -306,14 +253,13 @@ void writeEEPROM() {
     tmpStr += " of ";
     tmpStr += EEPROM_SIZE;
     tmpStr += " bytes from EEPROM";
-  }
+    }
   else {
     tmpStr = "No changes to EEPROM";
-  }
+    }
 
-  serPrntNL("writeEEPROM()0");
   serPrntNL(tmpStr);
-}
+  }
 
 //=================================================================================================
 int writeEepromReg(uint16_t nIdx) {
@@ -326,15 +272,12 @@ int writeEepromReg(uint16_t nIdx) {
     tmpStr += nIdx;
     tmpStr += "]:";
     tmpStr += eeprom[nIdx];
-    tmpStr += "writeEepromReg():0";
-    serPrntNL(tmpStr);
     return 1;
     }
   else {
     tmpStr = "Idx:";
     tmpStr += nIdx;
     tmpStr += ": No change to register";
-    tmpStr += "writeEepromReg():1";
     serPrntNL(tmpStr);
     return 0;
     }
@@ -346,10 +289,22 @@ void setup() {
   int ser_wait_cnt = 0;
   pinMode(LED_BUILTIN, OUTPUT);
 
-  ledPulseTrain(1);
+  Serial.begin(9600);
+  ledPulseTrain(3);
+  while (!Serial && ser_wait_cnt < 10) {
+    ser_wait_cnt++;
+    ledToggle();
+    delay(250);
+    }
+  serPrntNL("Serial OK");
+
+  ledPulseTrain(4);
+  serPrntNL("Read EEPROM contents");
+  readEEPROM();
+
+  npxlMode = eeprom_live[EE_REG_NEOPIXEL_MODE];
 
   strip.begin();
-  // strip.clear();
   strip.setPixelColor(0, eeprom_live[EE_REG_R_MAX], 0, 0);
   strip.setPixelColor(8, 0, eeprom_live[EE_REG_R_MAX], 0);
   strip.setPixelColor(15, 0, 0, eeprom_live[EE_REG_R_MAX]);
@@ -361,15 +316,7 @@ void setup() {
   npxG = neopixel_color(eeprom_live[EE_REG_R_INT], eeprom_live[EE_REG_G_MAX]);
   npxB = neopixel_color(eeprom_live[EE_REG_R_INT], eeprom_live[EE_REG_B_MAX]);
 
-  Serial.begin(9600);
-  ledPulseTrain(3);
-  while (!Serial && ser_wait_cnt < 10) {
-    ser_wait_cnt++;
-    ledToggle();
-    delay(250);
-    }
   x = -LOGO_WIDTH / 2;
-  serPrntNL("Serial OK");
 
   ledPulseTrain(4);
 
@@ -381,17 +328,15 @@ void setup() {
   else
     serPrntNL("SSD1306 allocation OK!");
 
-  nre0 = npx_ring_event(&btnState, 0, 0 , 0);
-  nreR = npx_ring_event(&btnStateR, 255, 0 , 0);
-  nreG = npx_ring_event(&btnStateG, 0, 255 , 0);
-  nreB = npx_ring_event(&btnStateB, 0, 0 , 255);
+  nre0 = npx_ring_event(&btnState, 0, 0, 0);
+  nreR = npx_ring_event(&btnStateR, 255, 0, 0);
+  nreG = npx_ring_event(&btnStateG, 0, 255, 0);
+  nreB = npx_ring_event(&btnStateB, 0, 0, 255);
   nreRG = npx_ring_event(&btnStateRG, 255, 255, 0);
 
 
   ledPulseTrain(6);
 
-  serPrntNL("Read EEPROM contents");
-  readEEPROM();
 
 
   // Show initial display buffer contents on the screen --
@@ -405,10 +350,12 @@ void setup() {
 
 
   ledPulseTrain(8);
+  serPrntNL("Clear display");
   display.clearDisplay();
   display.display();
   delay(SETUP_DELAY);
 
+  serPrntNL("Setup done");
   }
 
 //=================================================================================================
@@ -419,7 +366,7 @@ void taskSerOut() {
 
   if (iCount % 3 == 0) {
 
-    tmpInt = (r + g + b);
+    tmpInt = (c00.r + c00.g + c00.b);
     _tmpStr = "--iC:";
     _tmpStr += iCount;
     // _tmpStr += " azim:";
@@ -431,11 +378,11 @@ void taskSerOut() {
 
 
     _tmpStr += " rR:";
-    _tmpStr += rangeR;
+    _tmpStr += eeprom_live[EE_REG_R_MAX];
     _tmpStr += " rG:";
-    _tmpStr += rangeG;
+    _tmpStr += eeprom_live[EE_REG_G_MAX];
     _tmpStr += " rB:";
-    _tmpStr += rangeB;
+    _tmpStr += eeprom_live[EE_REG_B_MAX];
 
 
     _tmpStr += " incR:";
@@ -490,74 +437,95 @@ void taskSerOut() {
   }
 
 //-----------------------------------------------------------------------------
+void paramSetColorHandler(String nCmd, String nParamName, int& nParam, int nVal) {
+  paramSetHandler(nCmd, nParamName, nParam, nVal, 255, 0);
+  }
+
+//-----------------------------------------------------------------------------
 void paramSetHandler(String nCmd, String nParamName, int& nParam, int nVal, int nUpLim, int nLoLim) {
   if (inStr == nCmd) {
     serPrntNL(nCmd + ": set " + nParamName);
     nParam = nVal;
 
     if (nParam > nUpLim)
-      nParam = nUpLim;
-    else if (nParam < nLoLim)
       nParam = nLoLim;
+    else if (nParam < nLoLim)
+      nParam = nUpLim;
     }
   }
+
+//-----------------------------------------------------------------------------
+void paramIncColorHandler(String nCmd, String nParamName, int& nParam, int nInc) {
+  paramIncHandler(nCmd, nParamName, nParam, nInc, 255, 0);
+  }
+
+//-----------------------------------------------------------------------------
+void paramIncColorHandler(String nCmd, String nParamName, float& nParam, int nInc) {
+  paramIncHandler(nCmd, nParamName, nParam, nInc, 255, 0);
+  }
+
 //-----------------------------------------------------------------------------
 void paramIncHandler(String nCmd, String nParamName, int& nParam, int nInc, int nUpLim, int nLoLim) {
   if (inStr == nCmd) {
-    serPrntNL(nCmd + ": decrement " + nParamName);
+    serPrntNL("i:" + nCmd + ": increment " + nParamName);
+
     nParam += nInc;
+    serPrntNL("i:" + nCmd + ": nParam " + nParam);
 
     if (nParam > nUpLim)
-      nParam = nUpLim;
-    else if (nParam < nLoLim)
       nParam = nLoLim;
+    else if (nParam < nLoLim)
+      nParam = nUpLim;
     }
   }
 
 //-----------------------------------------------------------------------------
 void paramIncHandler(String nCmd, String nParamName, float& nParam, float nInc, float nUpLim, float nLoLim) {
   if (inStr == nCmd) {
-    serPrntNL(nCmd + ": increment " + nParamName);
+    serPrntNL("f:" + nCmd + ": increment " + nParamName);
+
     nParam += nInc;
+    serPrntNL("f:" + nCmd + ": nParam " + nParam);
 
     if (nParam > nUpLim)
-      nParam = nUpLim;
-    else if (nParam < nLoLim)
       nParam = nLoLim;
+    else if (nParam < nLoLim)
+      nParam = nUpLim;
     }
   }
 
 //-----------------------------------------------------------------------------
 void taskHandleSerIn() {
   if (recvWithEndMarker() > "") {
+    int tmpRmax = eeprom_live[EE_REG_R_MAX];
+    int tmpGmax = eeprom_live[EE_REG_G_MAX];
+    int tmpBmax = eeprom_live[EE_REG_B_MAX];
+    int tmpRmin = eeprom_live[EE_REG_R_MIN];
+    int tmpGmin = eeprom_live[EE_REG_G_MIN];
+    int tmpBmin = eeprom_live[EE_REG_B_MIN];
+    int tmpRint = eeprom_live[EE_REG_R_INT];
+    int tmpGint = eeprom_live[EE_REG_G_INT];
+    int tmpBint = eeprom_live[EE_REG_B_INT];
 
-    paramIncHandler("nm+", "next neopixel mode", npxlMode, 1, 5, 0);
-    paramIncHandler("nm-", "next neopixel mode", npxlMode, -1, 5, 0);
+    paramIncHandler("nm+", "next neopixel mode", npxlMode, 1, NUM_NPX_MODES, 0);
+    paramIncHandler("nm-", "next neopixel mode", npxlMode, -1, NUM_NPX_MODES, 0);
 
-    float tmpRmax = eeprom_live[EE_REG_R_MAX];
-    float tmpGmax = eeprom_live[EE_REG_G_MAX];
-    float tmpBmax = eeprom_live[EE_REG_B_MAX];
-    float tmpRmin = eeprom_live[EE_REG_R_MIN];
-    float tmpGmin = eeprom_live[EE_REG_G_MIN];
-    float tmpBmin = eeprom_live[EE_REG_B_MIN];
-    float tmpRint = eeprom_live[EE_REG_R_INT];
-    float tmpGint = eeprom_live[EE_REG_G_INT];
-    float tmpBint = eeprom_live[EE_REG_B_INT];
+    eeprom_live[EE_REG_NEOPIXEL_MODE] = npxlMode;
 
 
 
-    paramIncHandler("rR+", " range", tmpRmax, 1, 255, 0);
-    paramIncHandler("rR-", "  range", tmpRmax, -1, 255, 0);
-    paramIncHandler("rR++", " range", tmpRmax, 5, 255, 0);
-    paramIncHandler("rR--", "  range", tmpRmax, -5, 255, 0);
-    paramIncHandler("rG+", " range", tmpGmax, 1, 255, 0);
-    paramIncHandler("rG-", "  range", tmpGmax, -1, 255, 0);
-    paramIncHandler("rG++", " range", tmpGmax, 5, 255, 0);
-    paramIncHandler("rG--", "  range", tmpGmax, -5, 255, 0);
-    paramIncHandler("rB+", " range", tmpBmax, 1, 255, 0);
-    paramIncHandler("rB-", "  range", tmpBmax, -1, 255, 0);
-    paramIncHandler("rB++", " range", tmpBmax, 5, 255, 0);
-    paramIncHandler("rB--", "  range", tmpBmax, -5, 255, 0);
+    paramIncColorHandler("rR+", " max", tmpRmax, 1);
+    paramIncColorHandler("rR-", "  max", tmpRmax, -1);
+    paramIncColorHandler("rR++", " max", tmpRmax, 5);
+    paramIncColorHandler("rR--", "  max", tmpRmax, -5);
+    paramIncHandler("rG+", " max", tmpGmax, 1, 255, 0);
+    paramIncHandler("rG-", "  max", tmpGmax, -1, 255, 0);
+    paramIncHandler("rG++", " max", tmpGmax, 5, 255, 0);
+    paramIncHandler("rG--", "  max", tmpGmax, -5, 255, 0);
+    paramIncHandler("rB+", " max", tmpBmax, 1, 255, 0);
+    paramIncHandler("rB-", "  max", tmpBmax, -1, 255, 0);
+    paramIncHandler("rB++", " max", tmpBmax, 5, 255, 0);
+    paramIncHandler("rB--", "  max", tmpBmax, -5, 255, 0);
 
     paramIncHandler("ir+", " increment", tmpRint, .1, 64, 0);
     paramIncHandler("ir-", "  increment", tmpRint, -.1, 64, 0);
@@ -573,18 +541,19 @@ void taskHandleSerIn() {
     paramIncHandler("ib--", "  increment", tmpBint, -1, 64, 0);
 
 
-    paramSetHandler("rrmx", "max range", rangeR, 255, 255, 1);
-    paramSetHandler("rrmd", "mid range", rangeR, 127, 255, 1);
-    paramSetHandler("rrmn", "min range", rangeR, 1, 255, 1);
+    paramSetHandler("rrmx", "max ", tmpRmax, 255, 255, 1);
+    paramSetHandler("rrmd", "mid ", tmpRmax, 127, 255, 1);
+    paramSetHandler("rrmn", "min ", tmpRmax, 1, 255, 1);
 
-    paramSetHandler("rgmx", "max range", rangeG, 255, 255, 1);
-    paramSetHandler("rgmd", "mid range", rangeG, 127, 255, 1);
-    paramSetHandler("rgmn", "min range", rangeG, 1, 255, 1);
+    paramSetHandler("rgmx", "max ", tmpGmax, 255, 255, 1);
+    paramSetHandler("rgmd", "mid ", tmpGmax, 127, 255, 1);
+    paramSetHandler("rgmn", "min ", tmpGmax, 1, 255, 1);
 
-    paramSetHandler("rbmx", "max range", rangeB, 255, 255, 1);
-    paramSetHandler("rbmd", "mid range", rangeB, 127, 255, 1);
-    paramSetHandler("rbmn", "min range", rangeB, 1, 255, 1);
+    paramSetHandler("rbmx", "max ", tmpBmax, 255, 255, 1);
+    paramSetHandler("rbmd", "mid ", tmpBmax, 127, 255, 1);
+    paramSetHandler("rbmn", "min ", tmpBmax, 1, 255, 1);
 
+    serPrntVNL("tmpRmax", tmpRmax);
 
     eeprom_live[EE_REG_R_MAX] = tmpRmax;
     eeprom_live[EE_REG_G_MAX] = tmpGmax;
@@ -595,6 +564,9 @@ void taskHandleSerIn() {
     eeprom_live[EE_REG_R_INT] = tmpRint;
     eeprom_live[EE_REG_G_INT] = tmpGint;
     eeprom_live[EE_REG_B_INT] = tmpBint;
+    // calcColorRange();
+
+
 
     if (inStr == "non") {
       nxplEn = true;
@@ -623,12 +595,15 @@ void taskHandleSerIn() {
     else if (inStr == "save") {
       serPrntNL("save: save eeprom");
       writeEEPROM();
+      btnStateG = true;
       serPrntNL("save: eeprom saved");
 
       }
     else if (inStr == "read") {
       serPrntNL("read: read eeprom");
       readEEPROM();
+      // calcColorRange();
+      btnState = true;
       serPrntNL("read: eeprom read");
 
       }
@@ -640,7 +615,7 @@ void taskHandleSerIn() {
     else if (inStr == "init") {
       serPrntNL("init: init eeprom values");
 
-      eeprom_live[EE_REG_NEOPIXEL_MODE] = 0;
+      eeprom_live[EE_REG_NEOPIXEL_MODE] = NPX_MD_ASYC_SINE;
       eeprom_live[EE_REG_R_MAX] = DEF_NPX_AMP_MAX;
       eeprom_live[EE_REG_G_MAX] = DEF_NPX_AMP_MAX;
       eeprom_live[EE_REG_B_MAX] = DEF_NPX_AMP_MAX;
@@ -650,118 +625,161 @@ void taskHandleSerIn() {
       eeprom_live[EE_REG_R_INT] = 1;
       eeprom_live[EE_REG_G_INT] = 2;
       eeprom_live[EE_REG_B_INT] = 3;
+      // calcColorRange();
       serPrintLiveEEPROM();
-    }
+      }
     else if (inStr == "btn") {
       serPrntNL("btn: sim button");
       btnState = true;
-    }
+      }
     else if (inStr == "btnR") {
       serPrntNL("btnR: sim button");
       btnStateR = true;
-    }
+      }
     else if (inStr == "btnG") {
       serPrntNL("btnG: sim button");
       btnStateG = true;
-    }
+      }
     else if (inStr == "btnB") {
       serPrntNL("btnB: sim button");
       btnStateB = true;
-    }
+      }
     else if (inStr == "btnRG") {
       serPrntNL("btnRG: sim button");
       btnStateRG = true;
-    }
+      }
 
     inStr = "";
+    }
   }
-}
 
 //=================================================================================================
 void renderOledE_compass() {
 
   switch (dir) {
-    case 1:
-      display.fillRect(x, COMPASS_Y, LOGO_WIDTH, LOGO_HEIGHT, SSD1306_BLACK);
-      azim++;
-      x = azim_to_x();
-      display.drawBitmap(x, COMPASS_Y, diamond, LOGO_WIDTH, LOGO_HEIGHT, SSD1306_WHITE);
-      dir_up_count++;
-      break;
+      case 1:
+        display.fillRect(x, COMPASS_Y, LOGO_WIDTH, LOGO_HEIGHT, SSD1306_BLACK);
+        azim++;
+        x = azim_to_x();
+        display.drawBitmap(x, COMPASS_Y, diamond, LOGO_WIDTH, LOGO_HEIGHT, SSD1306_WHITE);
+        dir_up_count++;
+        break;
 
-    case -1:
-      display.fillRect(x, COMPASS_Y, LOGO_WIDTH, LOGO_HEIGHT, SSD1306_BLACK);
-      azim--;
-      x = azim_to_x();
-      display.drawBitmap(x, COMPASS_Y, diamond, LOGO_WIDTH, LOGO_HEIGHT, SSD1306_WHITE);
-      dir_dn_count++;
-      break;
+      case -1:
+        display.fillRect(x, COMPASS_Y, LOGO_WIDTH, LOGO_HEIGHT, SSD1306_BLACK);
+        azim--;
+        x = azim_to_x();
+        display.drawBitmap(x, COMPASS_Y, diamond, LOGO_WIDTH, LOGO_HEIGHT, SSD1306_WHITE);
+        dir_dn_count++;
+        break;
 
-    default:
-    case 0:
-      // display.drawBitmap(x, COMPASS_Y, diamond, LOGO_WIDTH, LOGO_HEIGHT, SSD1306_WHITE);
-      def_count++;
-      break;
-  }
+      default:
+      case 0:
+        // display.drawBitmap(x, COMPASS_Y, diamond, LOGO_WIDTH, LOGO_HEIGHT, SSD1306_WHITE);
+        def_count++;
+        break;
+    }
 
   if (azim > 359) {
     azim = 359;
     dir = -1;
-  }
+    }
 
   if (azim < 0) {
     azim = 0;
     x = azim_to_x();;
     dir = 1;
+    }
   }
-}
 
 //=================================================================================================
 void setAllNeoPixels() {
   for (int i = 0; i < NUM_NEOPIXELS; i++)
     strip.setPixelColor(i, c00.r, c00.g, c00.b);
   strip.show();
-}
+  }
 
 //=================================================================================================
 void taskOledOut() {
   renderOledE_compass();
-}
+  }
 
-//=================================================================================================
-void npxl_red_breath() {
-  c00.r = npxR.npcLedSine(incR, rangeR);
-  c00.g = npxG.npcLedSine(incG, rangeG);
-  c00.b = npxB.npcLedSine(incB, rangeB);
-
-}
 
 //=================================================================================================
 void taskNeopixelRing() {
-  static bool npxlEnShadow = false;
-  npxl_red_breath();
+  switch (npxlMode) {
+      default:
+      case NPX_MD_OFF:
+        c00.r = 0;
+        c00.g = 0;
+        c00.b = 0;
+        break;
 
-  if (nxplEn) {
-    strip.clear();
-    // rTmpFloat = 10;
-    // rTmpFloat *= i/16.0;
-    // rTmpFloat *= 2 * PI;
-    // rTmpFloat = sin(rTmpFloat);
+      case NPX_MD_ASYC_SINE:
+        c00.r = npxR.npcLedSine(incR, eeprom_live[EE_REG_R_MAX]);
+        c00.g = npxG.npcLedSine(incG, eeprom_live[EE_REG_G_MAX]);
+        c00.b = npxB.npcLedSine(incB, eeprom_live[EE_REG_B_MAX]);
 
-    nre0.nreBtnOvr(&c00);
-    nreR.nreBtnOvr(&c00);
-    nreG.nreBtnOvr(&c00);
-    nreB.nreBtnOvr(&c00);
-    nreRG.nreBtnOvr(&c00);
+        break;
 
-    setAllNeoPixels();
-  }
-  else if (npxlEnShadow != nxplEn) {
-    strip.clear();
-    strip.show();
-  }
+      case NPX_MD_RED_SINE:
+        c00.r = npxR.npcLedSine(incR, eeprom_live[EE_REG_R_MAX]);
+        c00.g = 0;
+        c00.b = 0;
+        break;
 
-  npxlEnShadow = nxplEn;
+      case NPX_MD_GREEN_SINE:
+        c00.r = 0;
+        c00.g = npxG.npcLedSine(incG, eeprom_live[EE_REG_G_MAX]);
+        c00.b = 0;
+        break;
+
+      case NPX_MD_BLUE_SINE:
+        c00.r = 0;
+        c00.g = 0;
+        c00.b = npxB.npcLedSine(incB, eeprom_live[EE_REG_B_MAX]);
+        break;
+
+      case NPX_MD_STATIC:
+        c00.r = eeprom_live[EE_REG_R_MAX];
+        c00.g = eeprom_live[EE_REG_G_MAX];
+        c00.b = eeprom_live[EE_REG_B_MAX];
+        break;
+
+      case NPX_MD_STATIC_RED:
+        c00.r = eeprom_live[EE_REG_B_MAX];
+        c00.g = 0;
+        c00.b = 0;
+        break;
+
+      case NPX_MD_STATIC_GREEN:
+        c00.r = 0;
+        c00.g = eeprom_live[EE_REG_G_MAX];
+        c00.b = 0;
+        break;
+
+      case NPX_MD_STATIC_BLUE:
+        c00.r = 0;
+        c00.g = 0;
+        c00.b = eeprom_live[EE_REG_B_MAX];
+        break;
+
+    }
+
+  strip.clear();
+  // rTmpFloat = 10;
+  // rTmpFloat *= i/16.0;
+  // rTmpFloat *= 2 * PI;
+  // rTmpFloat = sin(rTmpFloat);
+
+  nre0.nreBtnOvr(&c00);
+  nreR.nreBtnOvr(&c00);
+  nreG.nreBtnOvr(&c00);
+  nreB.nreBtnOvr(&c00);
+  nreRG.nreBtnOvr(&c00);
+
+  setAllNeoPixels();
+
   }
 
 //=================================================================================================
@@ -772,7 +790,7 @@ void loop() {
     dir = 1;
     }
 
-  if (iCount % 1 == 0)
+  if (iCount % 1 == 0 and iCount > 15)
     taskNeopixelRing();
 
   taskOledOut();
